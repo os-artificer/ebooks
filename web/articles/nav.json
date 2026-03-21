@@ -7,20 +7,28 @@
       "summaryClass": "nav-category--cpp",
       "items": [
         {
-          "href": "./page/cpp/枚举类型的特点及用法.html",
-          "text": "C++ 枚举类型：特点、用法与注意事项"
+          "href": "./page/cpp/函数重载覆盖与隐藏.html",
+          "text": "C++ 函数：重载、覆盖、隐藏"
+        },
+        {
+          "href": "./page/cpp/匿名namespace有什么作用.html",
+          "text": "C++ 匿名 namespace 有什么作用？"
         },
         {
           "href": "./page/cpp/无锁队列的实现原理.html",
           "text": "C++ 高性能编程之无锁队列的实现原理"
         },
         {
-          "href": "./page/cpp/限制继承的方法有哪些.html",
-          "text": "C++ 各版本\"限制继承\"都有哪些招？"
+          "href": "./page/cpp/枚举类型的特点及用法.html",
+          "text": "C++ 枚举类型：特点、用法与注意事项"
         },
         {
-          "href": "./page/cpp/匿名namespace有什么作用.html",
-          "text": "C++ 匿名 namespace 有什么作用？"
+          "href": "./page/cpp/模版泛化特化实例化.html",
+          "text": "C++ 模板：泛化、实例化、特化"
+        },
+        {
+          "href": "./page/cpp/限制继承的方法有哪些.html",
+          "text": "C++ 各版本\"限制继承\"都有哪些招？"
         }
       ]
     },

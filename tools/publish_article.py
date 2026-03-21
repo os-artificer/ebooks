@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import shutil
 from pathlib import Path
@@ -10,6 +11,9 @@ from markdown import markdown as md_to_html
 # 本脚本在 tools/ 下，仓库根为上一级目录
 ROOT = Path(__file__).resolve().parent.parent
 DRAFTS = ROOT / "drafts"
+NAV_PATH = ROOT / "web" / "articles" / "nav.json"
+# 与 publish_all 中一致：仅这些分类参与导航同步
+NAV_SYNC_KEYS = frozenset({"cpp", "golang", "tech-arch"})
 
 
 def guess_title(md_text: str, fallback: str) -> str:
@@ -41,6 +45,8 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
         md_text,
         extensions=["fenced_code", "tables"],
     )
+    # 草稿在 drafts/<分类>/ 下用 ../images/...；发布到 web/page/<分类>/ 需多一层 ../
+    html_body = html_body.replace('src="../images/', 'src="../../images/')
 
     out_html_path.parent.mkdir(parents=True, exist_ok=True)
     page = "\n".join(
@@ -108,14 +114,46 @@ def _draft_category(md_path: Path) -> str:
     return rel.parts[0]
 
 
+def sync_nav_full() -> None:
+    """根据 drafts/<分类>/*.md 重建 nav.json 中各分类的 items（顺序为文件名排序）。"""
+    if not NAV_PATH.is_file():
+        raise SystemExit(f"未找到导航文件: {NAV_PATH}")
+    data = json.loads(NAV_PATH.read_text(encoding="utf-8"))
+    categories = data.get("categories")
+    if not isinstance(categories, list):
+        raise SystemExit("nav.json 格式异常: 缺少 categories 数组")
+
+    for cat in categories:
+        key = cat.get("key")
+        if key not in NAV_SYNC_KEYS:
+            continue
+        in_dir = DRAFTS / key
+        if not in_dir.is_dir():
+            cat["items"] = []
+            continue
+        md_files = sorted(in_dir.glob("*.md"))
+        items = []
+        for md_path in md_files:
+            md_text = md_path.read_text(encoding="utf-8")
+            title = guess_title(md_text, md_path.stem)
+            href = f"./page/{key}/{md_path.stem}.html"
+            items.append({"href": href, "text": title})
+        cat["items"] = items
+
+    NAV_PATH.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def copy_tech_arch_assets_if_needed(categories: set[str]) -> None:
     if "tech-arch" not in categories:
         return
-    in_dir = DRAFTS / "tech-arch"
-    assets_in = in_dir / "A2A-assets"
-    assets_out = ROOT / "web" / "page" / "tech-arch" / "A2A-assets"
+    assets_in = DRAFTS / "images" / "tech-arch"
+    assets_out = ROOT / "web" / "images" / "tech-arch"
     if not assets_in.exists():
         return
+    assets_out.parent.mkdir(parents=True, exist_ok=True)
     if assets_out.exists():
         shutil.rmtree(assets_out)
     shutil.copytree(assets_in, assets_out)
@@ -134,12 +172,15 @@ def publish_all() -> None:
             convert_one(md_path, out_html_path)
 
         if cat == "tech-arch":
-            assets_in = in_dir / "A2A-assets"
-            assets_out = out_dir / "A2A-assets"
+            assets_in = DRAFTS / "images" / "tech-arch"
+            assets_out = ROOT / "web" / "images" / "tech-arch"
             if assets_in.exists():
+                assets_out.parent.mkdir(parents=True, exist_ok=True)
                 if assets_out.exists():
                     shutil.rmtree(assets_out)
                 shutil.copytree(assets_in, assets_out)
+
+    sync_nav_full()
 
 
 def publish_paths(md_paths: list[Path]) -> None:
@@ -151,6 +192,7 @@ def publish_paths(md_paths: list[Path]) -> None:
         out_html_path = out_dir / f"{md_path.stem}.html"
         convert_one(md_path, out_html_path)
     copy_tech_arch_assets_if_needed(categories)
+    sync_nav_full()
 
 
 def main() -> None:

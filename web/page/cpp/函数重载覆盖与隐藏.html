@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 函数：重载、覆盖、隐藏</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 函数：重载、覆盖、隐藏</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-03-21</p>
+</blockquote>
+<p>面向对象里这三个词都带个"函数"，意思却差很远：<strong>重载</strong>是同一作用域里"同名多份"；<strong>覆盖</strong>是继承里<strong>重写虚函数</strong>；<strong>隐藏</strong>是派生类里<strong>同名把基类的给挡了</strong>。下面分三块捋一遍，最后给张表对照。</p>
+<hr />
+<h2>一、重载（Overload）：同一作用域，同名不同参</h2>
+<p>说白了：名字一样，<strong>参数列表</strong>得不一样（类型、个数、顺序里至少变一个）。编译器在<strong>编译期</strong>按实参帮你选版本，这叫<strong>静态多态</strong>。</p>
+<p>注意：<strong>不能</strong>只靠返回值不同来重载，返回值不参与重载决议。</p>
+<p>要同时满足：</p>
+<ul>
+<li><strong>同一作用域</strong>：同一个类里，或同一个命名空间里。</li>
+<li><strong>同名、参数列表不同</strong>。</li>
+<li><strong>与返回值无关</strong>：只改返回类型不算重载。</li>
+<li><strong>编译期定调</strong>：看实参匹配谁。</li>
+</ul>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+
+// 同一作用域，同名，参数不同
+int Add(int a, int b)
+{
+    std::cout &lt;&lt; &quot;call Add(int,int): &quot;;
+    return a + b;
+}
+
+double Add(double a, double b)
+{
+    std::cout &lt;&lt; &quot;call Add(double,double): &quot;;
+    return a + b;
+}
+
+int Add(int a, int b, int c)
+{
+    std::cout &lt;&lt; &quot;call Add(int,int,int): &quot;;
+    return a + b + c;
+}
+
+int main()
+{
+    std::cout &lt;&lt; Add(1, 2) &lt;&lt; std::endl;       // int Add(int,int)
+    std::cout &lt;&lt; Add(1.5, 2.5) &lt;&lt; std::endl;   // double Add(double,double)
+    std::cout &lt;&lt; Add(1, 2, 3) &lt;&lt; std::endl;    // int Add(int,int,int)
+    return 0;
+}
+</code></pre>
+<p>输出示例：</p>
+<pre><code>call Add(int,int): 3
+call Add(double,double): 4
+call Add(int,int,int): 6
+</code></pre>
+<hr />
+<h2>二、覆盖（Override）：虚函数 + 签名对上</h2>
+<p>在继承里，派生类<strong>重新实现</strong>基类的<strong>虚函数</strong>，而且<strong>签名要一致</strong>（C++11 起可用 <code>override</code> 写清楚，避免手滑写错签名）。通过<strong>基类指针或引用</strong>调用时，<strong>运行时</strong>按<strong>对象真实类型</strong>走派生类版本，这就是<strong>动态多态</strong>。</p>
+<p>要同时满足：</p>
+<ul>
+<li><strong>有继承关系</strong>。</li>
+<li><strong>基类里</strong>该函数是 <strong><code>virtual</code></strong>。</li>
+<li><strong>派生类</strong>里<strong>同名、同参、返回类型一致</strong>（协变返回另说，这里不展开）。</li>
+<li>访问权限可以不同，但一般别乱改，免得读者懵。</li>
+</ul>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+
+class Base {
+public:
+    Base() = default;
+    virtual ~Base() = default;
+
+    virtual void Show()
+    {
+        std::cout &lt;&lt; &quot;Base::Show()\n&quot;;
+    }
+};
+
+class Derived : public Base {
+public:
+    void Show() override
+    {
+        std::cout &lt;&lt; &quot;Derived::Show()\n&quot;;
+    }
+};
+
+int main()
+{
+    Base* ptr = new Derived();
+    ptr-&gt;Show();   // 运行期：走 Derived::Show()
+    delete ptr;
+    return 0;
+}
+</code></pre>
+<p>输出示例：</p>
+<pre><code>Derived::Show()
+</code></pre>
+<hr />
+<h2>三、隐藏（Hide）：同名但没形成覆盖</h2>
+<p>派生类里<strong>起了和基类同名</strong>的函数，但<strong>没形成覆盖</strong>（比如基类不是虚函数，或<strong>参数列表不同</strong>），那基类里的同名函数在<strong>派生类作用域里</strong>就被<strong>藏起来</strong>了：默认用<strong>派生类</strong>这份；想调基类的，得写 <strong><code>Base::函数名(...)</code></strong>。</p>
+<p>要点：</p>
+<ul>
+<li>发生在<strong>继承</strong>里。</li>
+<li><strong>同名</strong>，但<strong>不满足覆盖</strong>（非虚，或参数不一致等）。</li>
+<li>派生类对象上直接写名字，<strong>优先</strong>派生类；要调基类版本用 <strong><code>基类::</code></strong>。</li>
+<li>一般是<strong>编译期</strong>就按<strong>静态类型</strong>解析到派生类那一支（和虚函数那条路径不一样）。</li>
+</ul>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+
+class Base {
+public:
+    Base() = default;
+    virtual ~Base() = default;
+
+    void Hide(int x)
+    {
+        std::cout &lt;&lt; &quot;Base::Hide(int): &quot; &lt;&lt; x &lt;&lt; &quot;\n&quot;;
+    }
+
+    virtual void VirHide(int x)
+    {
+        std::cout &lt;&lt; &quot;Base::VirHide(int): &quot; &lt;&lt; x &lt;&lt; &quot;\n&quot;;
+    }
+};
+
+class Derived : public Base {
+public:
+    // 与基类 Hide(int) 参数不同 → 隐藏基类 Hide(int)
+    void Hide(double x)
+    {
+        std::cout &lt;&lt; &quot;Derived::Hide(double): &quot; &lt;&lt; x &lt;&lt; &quot;\n&quot;;
+    }
+
+    // 基类虽是虚函数，但参数不同 → 仍不是覆盖，而是隐藏
+    void VirHide(double x)
+    {
+        std::cout &lt;&lt; &quot;Derived::VirHide(double): &quot; &lt;&lt; x &lt;&lt; &quot;\n&quot;;
+    }
+};
+
+int main()
+{
+    Derived d;
+    d.Hide(10);          // Derived::Hide(double)
+    d.Hide(10.5);
+    d.VirHide(10);
+    d.VirHide(10.5);
+    d.Base::Hide(10);    // 显式调用基类
+    d.Base::VirHide(10);
+    return 0;
+}
+</code></pre>
+<p>输出示例：</p>
+<pre><code>Derived::Hide(double): 10
+Derived::Hide(double): 10.5
+Derived::VirHide(double): 10
+Derived::VirHide(double): 10.5
+Base::Hide(int): 10
+Base::VirHide(int): 10
+</code></pre>
+<hr />
+<h2>四、一眼对比</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>重载</th>
+<th>覆盖</th>
+<th>隐藏</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>作用域</strong></td>
+<td>同一作用域（类内 / 命名空间）</td>
+<td>基类与派生类</td>
+<td>基类与派生类</td>
+</tr>
+<tr>
+<td><strong>函数名</strong></td>
+<td>相同</td>
+<td>相同</td>
+<td>相同</td>
+</tr>
+<tr>
+<td><strong>参数列表</strong></td>
+<td>必须不同</td>
+<td>必须相同</td>
+<td>往往不同（否则可能成覆盖）</td>
+</tr>
+<tr>
+<td><strong>基类函数</strong></td>
+<td>不涉及</td>
+<td>必须是 <strong>virtual</strong></td>
+<td>可有可无，虚不虚都可能被藏</td>
+</tr>
+<tr>
+<td><strong>多态</strong></td>
+<td>编译期（静态绑定）</td>
+<td>运行期（虚函数）</td>
+<td>派生类侧优先，<strong>不是</strong>多态那条故事线</td>
+</tr>
+<tr>
+<td><strong>你在记什么</strong></td>
+<td>同名多版本，参数区分</td>
+<td>虚函数重写，用 <code>override</code> 省心</td>
+<td>同名挡了基类，用 <code>::</code> 救场</td>
+</tr>
+</tbody>
+</table>
+<p>抓四个关键词：<strong>是不是同一作用域</strong>、<strong>有没有继承</strong>、<strong>原型一不一致</strong>、<strong>基类是不是虚函数</strong>——基本就不会把这三个概念搅成一锅粥了。</p>
+    </article>
+</body>
+</html>

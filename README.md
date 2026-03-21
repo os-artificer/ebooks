@@ -9,11 +9,11 @@
 
 草稿在 **`drafts/`**（`cpp` / `golang` / `tech-arch`）。
 
-在仓库根目录执行 **`python tools/publish_article.py`** 会发布该目录下全部文章，输出到 **`web/page/`**。
+在仓库根目录执行 **`python3 tools/publish_article.py`** 会发布该目录下全部文章，输出到 **`web/page/`**，并**自动根据 `drafts/<分类>/*.md` 更新** **`web/articles/nav.json`**（各分类下列表顺序为文件名排序）。
 
 只发布某几篇时传入 Markdown 路径（可多篇），须位于 **`drafts/`** 下，例如：
 
-`python tools/publish_article.py drafts/cpp/某篇.md`
+`python3 tools/publish_article.py drafts/cpp/某篇.md`
 
 # 如何订阅更新？
 

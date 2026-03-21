@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 模板：泛化、实例化、特化</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 模板：泛化、实例化、特化</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-03-21</p>
+</blockquote>
+<p>读 STL、Boost 这类库时，满眼都是 <code>template</code>，不搞懂泛化、特化和实例化，很容易卡在源码门口。这篇文章咱们把三件事捋清楚：它们各是啥、编译器怎么选版本、顺带用一个"类型是否相同"的小例子串起来。</p>
+<hr />
+<h2>一、泛化：先有一张"万能图纸"</h2>
+<p>泛化模板就是最普通的那种模板：用类型参数（或非类型参数）占个位，表示"以后再说啥类型"，代码先按通用逻辑写。</p>
+<h3>1. 函数模板</h3>
+<p>一组函数逻辑一样，只是操作的类型不同，就用函数模板兜住。</p>
+<pre><code class="language-cpp">// T 是占位：具体啥类型，调用时再定
+template &lt;typename T&gt;
+void swap(T&amp; a, T&amp; b)
+{
+    T temp = a;
+    a = b;
+    b = temp;
+}
+</code></pre>
+<ul>
+<li><code>T</code> 可以是 <code>int</code>、<code>double</code>、<code>std::string</code> 等，都行。</li>
+<li>注意：模板本身<strong>不</strong>直接变成机器码，它只是给编译器的一张"生成代码的图纸"。</li>
+</ul>
+<h3>2. 类模板</h3>
+<p>类里用到的类型也想抽出来，就用类模板。下面这个迷你容器把数据成员收成 <code>_data</code>，命名上更贴近常见写法。</p>
+<pre><code class="language-cpp">template &lt;typename T&gt;
+class Container {
+private:
+    T _data;
+public:
+    explicit Container(T d) : _data(d) {}
+    T get() const { return _data; }
+};
+</code></pre>
+<ul>
+<li>成员函数可以全写在类里；要拆到类外，记得前面带上 <code>template &lt;typename T&gt;</code> 那一套。</li>
+</ul>
+<hr />
+<h2>二、特化：图纸不够用，再开一张"专款"</h2>
+<p>泛化版本对某些类型不合适，或者你想针对性优化，就给这些类型单独写一版，这就是<strong>特化</strong>。分<strong>全特化</strong>和<strong>偏特化</strong>两种。</p>
+<h3>1. 全特化：参数全钉死</h3>
+<p>所有模板参数都换成具体类型，把泛化那一套整段换掉。</p>
+<p><strong>函数模板全特化</strong>示例：对 <code>const char*</code> 单独打招呼。</p>
+<pre><code class="language-cpp">template &lt;typename T&gt;
+void print(T value)
+{
+    std::cout &lt;&lt; &quot;Generic: &quot; &lt;&lt; value &lt;&lt; std::endl;
+}
+
+template &lt;&gt;
+void print&lt;const char*&gt;(const char* value)
+{
+    std::cout &lt;&lt; &quot;Specialized for string: &quot; &lt;&lt; value &lt;&lt; std::endl;
+}
+</code></pre>
+<p>传 <code>"hello"</code> 这种会落到 <code>const char*</code>，优先走特化；别的类型照旧走泛化。</p>
+<p><strong>类模板全特化</strong>示例：给 <code>int</code> 单独一版 <code>Printer</code>。</p>
+<pre><code class="language-cpp">template &lt;typename T&gt;
+class Printer {
+public:
+    void print(T value)
+    {
+        std::cout &lt;&lt; &quot;Generic class: &quot; &lt;&lt; value &lt;&lt; std::endl;
+    }
+};
+
+template &lt;&gt;
+class Printer&lt;int&gt; {
+public:
+    void print(int value)
+    {
+        std::cout &lt;&lt; &quot;Specialized class for int: &quot; &lt;&lt; value &lt;&lt; std::endl;
+    }
+};
+</code></pre>
+<h3>2. 偏特化：只钉死一部分（或改成指针形态）</h3>
+<p>多参数模板里，可以只固定其中几个参数，或者专门给"两个都是指针"这种形态写一版。<strong>函数模板不能做偏特化</strong>，只有类模板可以，这点别记反了。</p>
+<pre><code class="language-cpp">template &lt;typename T, typename U&gt;
+class Pair {
+public:
+    Pair(T a, U b) : _first(a), _second(b) {}
+    void show()
+    {
+        std::cout &lt;&lt; &quot;Generic: &quot; &lt;&lt; _first &lt;&lt; &quot;, &quot; &lt;&lt; _second &lt;&lt; std::endl;
+    }
+private:
+    T _first;
+    U _second;
+};
+
+// 偏特化：第一个参数固定成 int
+template &lt;typename U&gt;
+class Pair&lt;int, U&gt; {
+public:
+    Pair(int a, U b) : _first(a), _second(b) {}
+    void show()
+    {
+        std::cout &lt;&lt; &quot;Partial (T=int): &quot; &lt;&lt; _first &lt;&lt; &quot;, &quot; &lt;&lt; _second &lt;&lt; std::endl;
+    }
+private:
+    int _first;
+    U _second;
+};
+
+// 偏特化：两个都是指针
+template &lt;typename T, typename U&gt;
+class Pair&lt;T*, U*&gt; {
+public:
+    Pair(T* a, U* b) : _first(a), _second(b) {}
+    void show()
+    {
+        std::cout &lt;&lt; &quot;Partial (pointers): &quot; &lt;&lt; *_first &lt;&lt; &quot;, &quot; &lt;&lt; *_second &lt;&lt; std::endl;
+    }
+private:
+    T* _first;
+    U* _second;
+};
+</code></pre>
+<hr />
+<h2>三、实例化：图纸终于变成真代码</h2>
+<p><strong>实例化</strong>就是编译器拿着模板（和可能的特化），按你用的具体类型<strong>生成</strong>出一份真正的函数或类。模板自己不长肉，实例化之后才落地。</p>
+<h3>1. 隐式实例化：你写调用，编译器生成</h3>
+<pre><code class="language-cpp">template &lt;typename T&gt;
+T add(T a, T b) { return a + b; }
+
+int main()
+{
+    int x = add(1, 2);          // 生成 add&lt;int&gt;
+    double y = add(1.5, 2.5);   // 生成 add&lt;double&gt;
+    return 0;
+}
+</code></pre>
+<p><code>int</code> 一版、<code>double</code> 一版，都是编译器悄悄帮你实例化出来的。</p>
+<h3>2. 显式实例化：你点名要哪一版</h3>
+<p>自己写 <code>template ...</code>，等于告诉编译器："这一版在<strong>这个</strong>翻译单元里给我生成好。"分离编译、控制符号时常用。</p>
+<pre><code class="language-cpp">template int add&lt;int&gt;(int, int);
+template double add&lt;double&gt;(double, double);
+template class Container&lt;int&gt;;
+</code></pre>
+<p>实务上很多人把显式实例化放在 <code>.cpp</code> 里，和声明分开，省得链接时重复定义闹心。</p>
+<hr />
+<h2>四、匹配优先级：编译器先找谁？</h2>
+<p>可以粗略记一句：<strong>特化比泛化"更具体"就优先</strong>——全特化、偏特化都比光秃秃的泛化更贴类型；具体规则以标准为准，写库时记住"越特化越像定制款"就行。</p>
+<p>三者关系可以一句话说完：泛化是通用图纸，特化是某几类类型的专款，实例化是"按图纸把代码印出来"的那一步。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>适合干啥</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>泛化</td>
+<td>写通用逻辑，例如容器、算法骨架</td>
+</tr>
+<tr>
+<td>特化</td>
+<td>某类型要特殊行为或要省空间、提速</td>
+</tr>
+<tr>
+<td>显式实例化</td>
+<td>管住在哪个 <code>.cpp</code> 里生成，配合分离编译</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>五、小例子：用特化做"类型是否相同"</h2>
+<p><code>&lt;type_traits&gt;</code> 里那一堆 trait，很多就是<strong>泛化 + 偏特化</strong>堆出来的。SFINAE（替换失败不是错误）再配合一下，能玩出很多静态判断。这里只演示最朴素的一种：判断两个类型是否相同。</p>
+<p>思路很简单：</p>
+<ul>
+<li>主模板：默认认为不相同，<code>"值"</code> 为 <code>false</code>。</li>
+<li>当两个模板参数其实是同一种类型时，偏特化一版，改成 <code>true</code>。</li>
+<li>读静态成员 <code>_value</code> 就知道结果。</li>
+</ul>
+<p>下面结构体起名用 <code>TypeEqual</code>，避免和标准库的 <code>std::is_same</code> 撞名；成员按习惯用 <code>_value</code>。</p>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+
+template &lt;typename T, typename U&gt;
+struct TypeEqual {
+    static constexpr bool _value = false;
+};
+
+template &lt;typename T&gt;
+struct TypeEqual&lt;T, T&gt; {
+    static constexpr bool _value = true;
+};
+
+template &lt;typename T, typename U&gt;
+void check_same_type()
+{
+    if (TypeEqual&lt;T, U&gt;::_value)
+        std::cout &lt;&lt; &quot;T 和 U 是相同类型\n&quot;;
+    else
+        std::cout &lt;&lt; &quot;T 和 U 是不同类型\n&quot;;
+}
+
+int main()
+{
+    check_same_type&lt;int, int&gt;();
+    check_same_type&lt;int, double&gt;();
+    check_same_type&lt;char, char&gt;();
+    check_same_type&lt;int*, int*&gt;();
+    return 0;
+}
+</code></pre>
+<p>日常项目里直接用 <code>std::is_same</code> 就行；这里主要是让你看清<strong>偏特化</strong>长啥样。把泛化、特化、实例化三块串起来，读模板库源码时心里会踏实很多。</p>
+    </article>
+</body>
+</html>

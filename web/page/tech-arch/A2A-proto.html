@@ -47,7 +47,7 @@
 <p><strong>协作需求</strong>：助手发现光靠自己不行，得叫上机票、酒店、货币、当地旅游等多个专用智能体一起干。</p>
 <p><strong>互操作性挑战</strong>：问题在于——这些智能体各搞各的，没有统一协议，既没法协作，也不知道对方能干啥，等于各自孤岛。</p>
 <p><strong>"使用 A2A"之后</strong>：A2A 协议为智能体提供标准的方法和数据结构，使其彼此通信；不论底层如何实现，同一批智能体都可作为互联系统，通过标准化协议无缝通信。作为编排者的 AI 助手，从所有支持 A2A 的智能体处获得一致的信息，继而将一份完整、统一的旅行计划作为对用户初始提示的无缝响应呈现给用户。</p>
-<p><img alt="A2A 角色示意：用户、A2A 客户端（Client Agent）与 A2A 服务端（Remote Agent）" src="./A2A-assets/a2a-actors.png" /></p>
+<p><img alt="A2A 角色示意：用户、A2A 客户端（Client Agent）与 A2A 服务端（Remote Agent）" src="../../images/tech-arch/a2a-actors.png" /></p>
 <hr />
 <h2>二、核心优势</h2>
 <p>用上 A2A 之后，在整个 AI 生态里能拿到这些好处（与原文顺序一致）：</p>
@@ -77,7 +77,7 @@
 <li><strong>MCP</strong>：将模型与数据、外部资源连接起来。</li>
 <li><strong>A2A</strong>：标准化部署在不同组织、用不同框架开发的智能体之间的通信。</li>
 </ul>
-<p><img alt="智能体技术栈：ADK 与 MCP" src="./A2A-assets/agentic-stack.png" /></p>
+<p><img alt="智能体技术栈：ADK 与 MCP" src="../../images/tech-arch/agentic-stack.png" /></p>
 <h3>A2A 和 MCP 有啥不同</h3>
 <p>在更广泛的 AI 通信生态中，你可能熟悉旨在促进智能体、模型与工具之间交互的协议。其中，<strong>Model Context Protocol（MCP）</strong> 是一种新兴标准，专注于将大语言模型（LLM）与数据、外部资源连接起来。</p>
 <p><strong>Agent2Agent（A2A）</strong> 协议则用于标准化 AI 智能体之间的通信，尤其是部署在外部系统中的智能体。A2A 与 MCP 互补，针对智能体交互中相关但不同的层面。</p>
@@ -86,7 +86,7 @@
 <li><strong>A2A 的焦点</strong>：让智能体以其原生模态协作，以智能体（或用户）身份通信，而非被约束为工具式交互；从而支持推理、规划、向其他智能体委派任务等复杂多轮交互，例如下单时的协商与澄清。</li>
 </ul>
 <p>将智能体封装为简单工具本质上有局限，无法体现智能体的全部能力。</p>
-<p><img alt="ADK + MCP" src="./A2A-assets/a2a-mcp-readme.png" /></p>
+<p><img alt="ADK + MCP" src="../../images/tech-arch/a2a-mcp-readme.png" /></p>
 <h3>A2A 和 ADK 啥关系</h3>
 <p><a href="https://google.github.io/adk-docs">Agent Development Kit (ADK)</a> 是 Google 开发的开源智能体开发工具包。A2A 是智能体通信协议，使智能体能够进行跨智能体通信，与其构建所用框架（如 ADK、LangGraph 或 Crew AI）无关。ADK 是灵活、模块化的框架，用于开发和部署 AI 智能体；虽针对 Gemini AI 与 Google 生态优化，但 ADK 与模型、部署方式无关，并致力于与其他框架兼容。</p>
 <hr />
