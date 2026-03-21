@@ -37,7 +37,7 @@ function rewriteSrcset(srcsetValue, baseUrl) {
     .join(", ");
 }
 
-/** 欢迎页（右侧文章区默认展示） */
+/** 欢迎页（导航底部入口；导航无文章时右侧默认回退） */
 const WELCOME_HREF = "./page/welcome.html";
 
 function rewriteRelativeUrls(container, baseUrl) {
@@ -141,15 +141,23 @@ createApp({
       cat.open = Boolean(e.target && e.target.open);
     }
 
-    onMounted(() => {
-      // Default view
-      loadNavConfig().catch((e) => {
+    onMounted(async () => {
+      try {
+        await loadNavConfig();
+        const cats = categories.value;
+        const first =
+          cats.length > 0 && cats[0].items && cats[0].items.length > 0
+            ? cats[0].items[0]
+            : null;
+        const defaultHref =
+          first && first.href ? first.href : WELCOME_HREF;
+        await openArticle(defaultHref);
+      } catch (e) {
         const container = document.getElementById("article");
         if (container) {
           container.innerHTML = `<div style="color:#b91c1c;padding:24px 0;">${String(e && e.message ? e.message : e)}</div>`;
         }
-      });
-      openArticle(WELCOME_HREF);
+      }
     });
 
     return {
