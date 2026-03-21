@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>os-artificer 技术圈</title>
+    <link rel="stylesheet" href="./style/main.css?v=20250321b">
+    <link rel="stylesheet" href="./style/article.css?v=20250321">
+</head>
+
+<body>
+    <div id="app"></div>
+
+    <!-- Vue 编译用模板：避免 mount 时清空 #app 导致导航消失 -->
+    <template id="vue-app-template">
+        <nav class="nav" aria-label="文章导航">
+            <div class="nav-search" role="search" aria-label="搜索文章">
+                <div class="nav-search__card">
+                    <div class="nav-search__toolbar">
+                        <label id="nav-search-label" for="nav-article-search" class="nav-search__label">搜索</label>
+                        <div class="nav-search__field">
+                            <span class="nav-search__icon" aria-hidden="true"></span>
+                            <input
+                                id="nav-article-search"
+                                v-model="searchQuery"
+                                type="text"
+                                inputmode="search"
+                                enterkeyhint="search"
+                                class="nav-search__input"
+                                placeholder="按标题筛选…"
+                                autocomplete="off"
+                                spellcheck="false"
+                                aria-label="按文章标题搜索"
+                                style="width:100%;min-width:0;box-sizing:border-box;display:block;field-sizing:fixed;-webkit-appearance:none;appearance:none"
+                            />
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <p v-if="searchTrimmed && filteredCategories.length === 0" class="nav-search__empty">
+                未找到匹配文章
+            </p>
+
+            <details
+                v-for="cat in filteredCategories"
+                :key="cat.key"
+                class="nav-group"
+                :open="searchTrimmed ? true : cat.open"
+                @toggle="onToggle(cat, $event)"
+            >
+                <summary :class="cat.summaryClass">
+                    {{ cat.title }}（{{ cat.items.length }}）
+                </summary>
+                <ul>
+                    <li v-for="it in cat.items" :key="it.href">
+                        <a
+                            :href="it.href"
+                            target="article"
+                            :class="{ active: activeHref === it.href }"
+                            @click.prevent="openArticle(it.href)"
+                        >
+                            {{ it.text }}
+                        </a>
+                    </li>
+                </ul>
+            </details>
+
+            <div class="nav-contact" aria-label="联系方式">
+                <div class="nav-contact__row">
+                    <span class="nav-contact__label">
+                        <svg class="nav-contact__icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                            <polyline points="22,6 12,13 2,6" />
+                        </svg>
+                        邮箱
+                    </span>
+                    <a class="nav-contact__link" href="mailto:uriwang@qq.com">uriwang@qq.com</a>
+                </div>
+                <div class="nav-contact__row">
+                    <span class="nav-contact__label">
+                        <svg class="nav-contact__icon" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+                        </svg>
+                        GitHub
+                    </span>
+                    <a
+                        class="nav-contact__link"
+                        href="https://github.com/os-artificer"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                    >os-artificer</a>
+                </div>
+            </div>
+
+            <div
+                class="nav-welcome-trigger"
+                role="button"
+                tabindex="0"
+                aria-label="查看欢迎页面与公众号信息"
+                @click="openArticle(welcomeHref)"
+                @keydown.enter.prevent="openArticle(welcomeHref)"
+                @keydown.space.prevent="openArticle(welcomeHref)"
+            >
+                <div class="nav-footer">
+                    欢迎关注订阅公众号：os-artificer 技术圈
+                </div>
+
+                <div class="nav-qr">
+                    <picture>
+                        <source srcset="./images/wechat-qrcode.webp" type="image/webp">
+                        <img
+                            src="./images/wechat-qrcode.png"
+                            alt="公众号二维码"
+                            decoding="async"
+                        />
+                    </picture>
+                </div>
+            </div>
+        </nav>
+
+        <main class="main">
+            <div id="article" aria-live="polite"></div>
+        </main>
+    </template>
+
+    <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+    <script src="./script/app.js?v=20250318"></script>
+</body>
+
+</html>

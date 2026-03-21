@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 数据库选型指南：从 OLTP 到时序一网打尽</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">2026 数据库选型指南：从 OLTP 到时序一网打尽</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-03-11</p>
+</blockquote>
+<p>引导语：选数据库总踩坑？7 大类、30 + 主流库一次性讲清优缺点与场景，看完少走 90% 弯路，架构与开发都能直接用。</p>
+<p>选数据库就像选工具，没有银弹，只有合不合适。</p>
+<p>本文按"类型"把常见数据库捋一遍，方便你做技术选型时心里有数。</p>
+<hr />
+<h2>一、关系型数据库（RDBMS）</h2>
+<h3>MySQL / MariaDB</h3>
+<p><strong>功能特性</strong>：开源、生态成熟，支持主从复制、读写分离、分区表；InnoDB 引擎支持事务、行锁、外键；社区版免费，企业版有商业支持。</p>
+<p><strong>不足</strong>：单机写入有瓶颈，大表 DDL 成本高；复杂查询、高并发写场景下需要做分库分表或换方案。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：单机 OLTP 下简单主键/点查约 1 万～数万 QPS。百万行级带 WHERE 的查询与数据分布、索引、硬件强相关：若走主键/覆盖索引，MySQL 与 PostgreSQL 均可 1ms 以内；若涉及窗口函数、复杂聚合等，PostgreSQL 优势更明显，"10 倍差距"多出现在此类特定场景，而非所有带 WHERE 的查询。高并发短连接（如电商秒杀）下 MySQL 默认配置往往更稳，PostgreSQL 需调优 max_connections 或配合 pgbouncer 才能匹配。</p>
+<p><strong>适用场景</strong>：Web/App 业务主库（用户、订单、商品、支付流水）；后台 CMS、权限与配置；中小型电商、SaaS 多租户；与 PHP/Java/Go 等主流语言搭配的读写分离、主从架构；对事务有要求但查询以单表/简单关联为主的业务。</p>
+<hr />
+<h3>PostgreSQL</h3>
+<p><strong>功能特性</strong>：支持标准 SQL 和丰富扩展（JSONB、全文检索、GIS、数组等）；ACID 强一致，支持复杂查询、窗口函数、CTE；开源、社区活跃。</p>
+<p><strong>不足</strong>：在高并发写入场景下，默认配置可能成为瓶颈，需要进行针对性优化（如连接池、max_connections、WAL 等），这与多数数据库类似，属常规调优而非 PostgreSQL 特有。原生流复制已足够成熟，复杂度主要体现在自动故障转移（需 Patroni/Repmgr 等），而 MySQL 有 MGR/InnoDB Cluster，选型时需区分"复制"与"高可用"能力。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：走主键/覆盖索引时与 MySQL 均可做到 1ms 以内；窗口函数、复杂聚合等场景下 PostgreSQL 常更快，具体与数据分布、索引设计、硬件相关。并发约 200 以内较稳定，再高需调优；并行查询在极高并发（50+ 连接）下曾有内存相关报告，生产需压测验证。</p>
+<p><strong>适用场景</strong>：复杂报表与多维分析、地理信息（PostGIS）、全文检索与 JSON 混合查询；内容/社区平台（标签、评论、推荐元数据）；金融与风控的规则与流水分析；需要"一个库搞定关系 + 半结构化"的现代应用；替代 Oracle 的迁移与国产化替代方案。</p>
+<hr />
+<h3>Oracle</h3>
+<p><strong>功能特性</strong>：企业级功能完善，高可用、RAC、Data Guard、分区、高级优化器；PL/SQL 强大，适合复杂业务逻辑封装。</p>
+<p><strong>不足</strong>：商业授权贵，运维和 DBA 成本高；对团队技能和预算要求高。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：企业级基准（如 TPC-C）中表现领先；RAC 下可线性扩展读写，单库可支撑数万 TPS 量级，具体与硬件、分区、存储（如 Exadata）强相关。延迟通常在毫秒级，适合对 SLA 要求极高的核心交易系统。</p>
+<p><strong>适用场景</strong>：银行/证券核心交易、清算与账务；政府、国企的 ERP、人力资源、审计留痕；大型制造与供应链；对合规、审计、高可用有强需求且预算充足的传统企业；已有 Oracle 技术栈的存量系统维护与扩展。</p>
+<hr />
+<h3>SQL Server</h3>
+<p><strong>功能特性</strong>：与 Windows/.NET 集成好，支持 T-SQL、SSIS/SSRS、Always On 高可用；云上有 Azure SQL 托管方案。</p>
+<p><strong>不足</strong>：传统上偏 Windows 生态，Linux 支持较晚；商业授权，成本需要考虑。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：Always On 下可做到高可用与读扩展；单机 TPS 在万级量级较常见，具体与版本、内存、TempDB 和存储配置相关。与 Oracle 类似，更多见于企业内网与合规场景的基准数据，公开统一数字较少。</p>
+<p><strong>适用场景</strong>：微软技术栈企业应用（.NET、Azure AD 集成）；内部 OA、ERP、CRM；SSIS/SSRS 数据集成与报表；与 Active Directory、Power BI、Office 协同的办公与数据分析；云上选用 Azure SQL 的混合云与托管场景。</p>
+<hr />
+<h3>TiDB</h3>
+<p><strong>功能特性</strong>：开源分布式关系型数据库，MySQL 协议兼容度＞99%（如 5.7/8.0 协议），核心 SQL 语法高度兼容 MySQL，足以支持绝大多数应用平滑迁移；选型时需验证存储过程、触发器、HANDLER 等高级功能。计算-存储分离，TiDB Server（无状态 SQL 层）+ PD（调度与元数据）+ TiKV（分布式 KV、Raft 强一致）。支持水平扩缩容、在线 DDL、分布式事务（乐观锁/悲观锁）；TiFlash 列存支持 HTAP，同一份数据可同时做 OLTP 与 OLAP，优化器可自动选行存/列存。</p>
+<p><strong>不足</strong>：分布式事务与跨节点 JOIN 有额外延迟，小表、低并发场景不如单机 MySQL 简单省资源；TiFlash 需单独部署与同步，混合负载占比高时需合理规划；运维与监控复杂度高于单机库。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：单节点约 5 千～6 千 TPS（视事务类型），3 节点约 1.1 万～1.6 万 TPS，5 节点约 1.8 万～2.5 万 TPS；百节点级集群可支撑百万级 QPS。HTAP 场景下复杂分析较单机 MySQL 可快数倍至一个数量级；延迟与网络、副本分布强相关。</p>
+<p><strong>适用场景</strong>：MySQL 分库分表替代、单库容量与写入瓶颈的平滑扩展；高并发 OLTP + 实时分析混合负载（如大促交易与实时大屏）；金融、电商订单与用户中心等强一致、可扩展业务；SaaS 多租户、海量数据下的在线事务与即席查询；需要 HTAP、水平扩展且希望延续 MySQL 生态的选型。</p>
+<hr />
+<h3>VoltDB</h3>
+<p><strong>功能特性</strong>：NewSQL 分布式内存 OLTP 数据库，由 Michael Stonebraker 等主导设计；全内存存储、ACID 事务、标准 SQL。无共享（Shared-nothing）架构，数据自动分片、支持线性水平扩展与在线扩缩容；单线程分区执行减少锁竞争，存储过程减少往返；命令日志 + 快照持久化，多副本与 K-safety 高可用。提供开源社区版与商业企业版（流式计算、跨数据中心复制等）。</p>
+<p><strong>不足</strong>：全内存带来容量与成本约束，数据规模受集群内存总量限制；与通用关系型相比生态与运维工具偏少，适合有明确高吞吐、低延迟 OLTP 需求的场景。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：单节点纯写场景约 10 万～50 万 TPS（ACID），单节点可达到百万级 SQL/秒（简单请求）；多节点可线性扩展（如 27 节点量级达百万级运算/秒）。延迟可低至毫秒级（如 99.999% 小于 50ms），C++ 执行引擎避免 GC 停顿。实际与事务复杂度、分区设计、网络强相关。</p>
+<p><strong>适用场景</strong>：高吞吐、低延迟的 OLTP（实时计费、风控、交易）；金融与电信的实时欺诈检测、风险分析、故障检测；物联网与边缘的流式事件处理；在线游戏状态与实时行为分析；需要强一致、水平扩展且以内存为主的事务型负载。</p>
+<hr />
+<h3>SQLite</h3>
+<p><strong>功能特性</strong>：进程内、无服务器、零配置的嵌入式 SQL 引擎；单文件数据库，跨平台、公共领域开源。完整 ACID、标准 SQL（含 JSON、窗口函数等）；库体积小（全功能约 750KiB 级），以库形式嵌入应用，无独立守护进程。WAL 模式支持读写并发，但同一时刻仅允许一个写入者。</p>
+<p><strong>不足</strong>：无网络服务端，多写并发被序列化，高并发多写场景争用明显；不推荐通过 NFS/SMB 等网络文件系统访问，易出现锁与一致性问题；单机单文件，无法水平扩展，与 MySQL/PostgreSQL 等 C-S 数据库的定位不同（SQLite 对标的是本地文件 I/O，而非企业级共享库）。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：本地读写通常优于直接文件 I/O；百万级数据在索引与批事务优化下可高效处理。并发能力受单写者限制，适合单应用/单设备或读多写少；日访问量十万次以内的站点可考虑，更高并发需 C-S 数据库。</p>
+<p><strong>适用场景</strong>：嵌入式设备与 IoT（手机、机顶盒、相机、车载等）；桌面/移动应用的本地存储与配置；应用内嵌数据文件格式（如版本控制、CAD）；小型网站与原型、本地/离线数据缓存；跨系统数据交换的 SQL 文件格式；不需要独立数据库服务、零运维的轻量关系型存储。</p>
+<hr />
+<h2>二、文档型数据库（Document Store）</h2>
+<h3>MongoDB</h3>
+<p><strong>功能特性</strong>：文档模型灵活，Schema 可演进；支持索引、聚合管道、副本集与分片；适合嵌套、半结构化数据。</p>
+<p><strong>不足</strong>：MongoDB 4.0 起支持多文档事务（副本集），4.2 起支持分片集群事务，7.0+ 事务稳定性已接近关系型。核心差距在隔离级别：仅支持"读已提交"，而 MySQL/PostgreSQL 支持"可重复读"/"串行化"。对于依赖"可重复读"或"串行化"隔离级别的传统复杂事务模式，其支持能力弱于关系型数据库；通过合理设计（如唯一约束、应用层两阶段提交等）结合"读已提交"，MongoDB 仍可满足许多金融场景需求。不当使用易导致数据膨胀和查询性能问题。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：简单插入在基准测试中常优于关系型；单机/单分片写入约 2 万～6 万 OPS（随规格 4 核～16 核、内存 8GB～128GB 递增）。分片集群有百万级 TPS 的公开案例（写为主）。聚合管道、JOIN 类操作实测常远低于"单表 SQL"的吞吐（如从数千 ops/s 降到数百）。写入延迟优化后平峰可到 2～5ms，大流量下会有数十 ms 尖刺。</p>
+<p><strong>适用场景</strong>：内容管理（文章、评论、富文本、版本）；用户画像与行为事件（属性常变、嵌套结构）；产品目录、商品规格与多维度属性；IoT/设备元数据与遥测快照；日志与埋点原始写入；需要水平扩展且读多写多、Schema 随业务演进的业务。</p>
+<hr />
+<h3>CouchDB / Couchbase</h3>
+<p><strong>功能特性</strong>：CouchDB 偏 AP、多主复制、离线优先；Couchbase 在兼容 Memcached 协议基础上提供 N1QL 查询和横向扩展。</p>
+<p><strong>不足</strong>：CouchDB 查询能力相对简单；Couchbase 学习曲线和运维复杂度不低。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：Couchbase 以 KV 为主时，延迟与吞吐接近同类内存/持久化 KV（万级～十万级 QPS 量级）；N1QL 查询则低于纯 KV。CouchDB 多主复制与离线同步场景下，吞吐受网络与冲突解决影响，一般不做极高 QPS 对比。</p>
+<p><strong>适用场景</strong>：<strong>CouchDB</strong>：边缘/离线优先应用、移动端与弱网环境的数据同步、多地域多主复制、冲突可协商的协作编辑。<strong>Couchbase</strong>：高并发会话与用户状态、游戏/社交的在线状态与排行榜、需要简单 SQL 查询的缓存层、实时分析缓存与物化视图。</p>
+<hr />
+<h2>三、键值型数据库（Key-Value）</h2>
+<h3>Redis</h3>
+<p><strong>功能特性</strong>：内存存储，延迟极低；支持 String、Hash、List、Set、Sorted Set、Stream 等结构；主从、哨兵、集群，支持持久化 RDB/AOF。</p>
+<p><strong>不足</strong>：内存成本高，数据量受限于内存；持久化与高可用需要合理配置，否则有丢数或故障切换延迟。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：官方基准下简单 SET/GET 在普通服务器（如 8 核 16G + NVMe）约 10 万～15 万 QPS，生产常见 8～12 万；极致优化（绑定 CPU、关闭持久化）可到 50 万+，"百万级"仅在实验室极限（裸金属 + RDMA 等）下可达，生产中几乎不可复现。延迟通常亚毫秒～毫秒级。达到 10 万 QPS 时建议 8 核+、32GB+ 内存、NVMe SSD、10Gbps 网络；生产多采用 2～3 节点集群分摊负载与持久化影响。</p>
+<p><strong>适用场景</strong>：热点数据缓存、会话 Session、Token 与登录态；排行榜（Sorted Set）、计数器、限流与熔断计数；简单消息队列与流处理（Stream）；分布式锁、选主与协调；实时配置与特征缓存；对延迟敏感、读多写多的前端加速层。</p>
+<hr />
+<h3>Memcached</h3>
+<p><strong>功能特性</strong>：分布式内存缓存，仅支持 key-value 字符串，单值最大 1MB；多线程 + 非阻塞 I/O（如 libevent），充分利用多核；Slab 内存分配减少碎片。无持久化、无主从与内置集群，节点间不通信，由客户端做分片与路由，部署与扩展简单。</p>
+<p><strong>不足</strong>：无持久化，重启即丢数据；无丰富数据结构（无 list/set/hash 等）、无事务与 Lua；无内置高可用与故障转移，单点故障影响大；功能上弱于 Redis，多数新项目更倾向选 Redis。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：亚毫秒级延迟，简单 GET/SET 与 Redis 在同一量级；多线程下多核利用好，纯缓存场景下与 Redis 性能接近。适合"仅需简单 KV 缓存、可接受丢数据、要线性加节点"的存量或特定场景。</p>
+<p><strong>适用场景</strong>：纯缓存（页面片段、查询结果、热点 key）；简单会话与临时状态；已有 Memcached 技术栈的维护；对数据结构与持久化无要求、希望客户端分片与线性扩展的轻量缓存层。</p>
+<hr />
+<h3>etcd / Consul</h3>
+<p><strong>功能特性</strong>：基于 Raft 的强一致 KV 存储；支持租约、Watch；常用于服务发现与配置中心。</p>
+<p><strong>不足</strong>：不是为海量业务数据设计，价值在于"一致性"和"协调"，不在于存大批量数据。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：etcd 三节点集群轻负载下请求可在 1ms 内完成；重负载下约 3 万+ 请求/秒。延迟受网络 RTT、磁盘 fsync（SSD 通常 &lt;1ms，HDD 约 10ms）影响大。建议至少 50 IOPS、高负载 500 IOPS，优先 SSD/NVMe；WAL 与快照分盘可带来约 20% 性能提升。Consul 定位类似，量级在同一数量级，侧重服务发现与健康检查。</p>
+<p><strong>适用场景</strong>：<strong>etcd</strong>：Kubernetes 集群元数据与调度状态、服务发现、分布式配置中心、分布式锁与选主、CI/CD 流水线状态。<strong>Consul</strong>：多数据中心服务注册与发现、健康检查与流量切流、配置下发、Consul Template 与动态配置；与 K8s、Mesos 等编排系统集成。</p>
+<hr />
+<h3>Aerospike</h3>
+<p><strong>功能特性</strong>：实时 NoSQL/键值数据平台，支持内存、SSD、PMEM 等混合存储，索引在内存、数据可落盘，兼顾性能与成本。强一致性（主键访问、多站点集群通过 Jepsen 等验证）、高可用（如 5 个 9）；支持基础类型与 CDT（List、Map、时序、地理等）、JSON 与 Document API；二级索引与 6.0+ 分区二级索引；Spark/Kafka/Presto 等连接器，TB～PB 级水平扩展。</p>
+<p><strong>不足</strong>：商业产品有企业版与许可；与 Redis/Memcached 相比运维与学习成本更高，适合有明确大规模、低延迟、强一致需求的场景。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：毫秒级延迟，单集群可达百万级 QPS；混合存储下成本可低于纯内存方案，适合海量 key、读多写多的实时访问。实际与集群规模、存储介质、主键/二级索引使用方式强相关。</p>
+<p><strong>适用场景</strong>：广告与推荐系统的实时画像与决策；全球分布式会话与用户状态；欺诈检测、实时风控与数字支付；IoT 与参与系统（SOE）的实时流存储与查询；需要 TB～PB 级、强一致、低延迟的键值/文档型实时库。</p>
+<hr />
+<h3>Apache Ignite</h3>
+<p><strong>功能特性</strong>：以内存为中心的分布式数据库、缓存与计算平台；定位为内存数据网格（IMDG），兼具缓存与数据库能力。兼容 JCache（JSR-107），支持通读/通写、过期策略、SQL 查询；完整 ANSI SQL、ACID 事务、可作主库或与 Oracle/MySQL 等集成作二级缓存。支持原生持久化（内存 + 磁盘）、自动分片与副本；计算网格（计算推向数据）、流处理、Ignite ML；对等架构、无单点，水平扩展。</p>
+<p><strong>不足</strong>：以 JVM 为主，资源占用与 GC 需关注；功能多、组件多，学习与调优成本高于单纯 KV 缓存；与 Redis 等相比更重，适合需要 SQL、事务与计算一体的场景。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：内存访问可达微秒级，相对磁盘库有数量级提升；对等架构下线性扩展，读写吞吐与节点数相关。实际与持久化策略、序列化方式、网络与 JVM 配置强相关。</p>
+<p><strong>适用场景</strong>：数据库加速与二级缓存（与现有 RDBMS 集成）；分布式会话与微服务状态、需 ACID 的分布式缓存；实时推荐、金融交易、广告竞价、游戏服务器；大规模并行计算与"计算推向数据"；需要"缓存 + SQL + 计算"一体的内存数据网格。</p>
+<hr />
+<h3>Tarantool</h3>
+<p><strong>功能特性</strong>：开源内存 NoSQL 数据库与应用服务器，BSD 许可；数据以 memtx 存于内存，可选 vinyl 引擎做持久化，支持 WAL。内置 Lua 脚本，存储过程与数据同进程、无网络往返；支持主从复制、热备。支持多种索引类型、空间与全文扩展；可选用 C/Rust 写扩展，适合把业务逻辑下沉到存储层。</p>
+<p><strong>不足</strong>：以单机/主从为主，大规模分布式需自建或配合 Sharding；Lua 生态与运维工具相对 Redis/MySQL 小众，选型需考虑团队技能；持久化与高可用需显式配置。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：内存存储、无独立缓存层，CPU 与延迟可预测；Lua 存储过程同进程执行，适合高 QPS、低延迟的 OLTP。单机/单副本下可达数十万级 OPS，实际与数据模型、索引、是否持久化强相关。</p>
+<p><strong>适用场景</strong>：高 QPS、低延迟 OLTP（订单、库存、会话）；需要可预测延迟的实时系统；在存储层跑 Lua 逻辑的定制业务（如风控规则、实时聚合）；缓存与简单 KV 的替代（需丰富索引与持久化时）；零售、电商、电信等对延迟敏感的在线服务。</p>
+<hr />
+<h2>四、列式 / 分析型数据库</h2>
+<h3>ClickHouse</h3>
+<p><strong>功能特性</strong>：列式存储，适合聚合、筛选、多维分析；压缩比高，单机/集群都能跑出很高吞吐；支持 SQL，生态丰富。</p>
+<p><strong>不足</strong>：不适合高并发小事务、频繁更新删除；更适合"写少读多"的日志、指标、报表场景。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：写入约 50～200 万行/秒量级（按行约 100 字节估算），批写入建议每批 10 万+ 行、约每秒一批更优。查询与单表/多表、是否分区与主键过滤、硬件强相关：单机分区表 + 主键过滤的亿级行聚合，通常 100ms～1 秒；百亿级全表扫描（无分区/索引）才会到 10 秒以上。简单查询可到 15ms 级、复杂查询 30ms 级；压缩比常见 10:1～70:1，列存 I/O 友好。</p>
+<p><strong>适用场景</strong>：用户行为与埋点分析、转化漏斗与留存；日志与链路数据的多维筛选与聚合；监控指标存储与大盘查询；数仓明细层、宽表与即席查询（Ad-hoc）；BI 报表与数据产品；写入批量、读多为聚合/筛选的 OLAP 场景。</p>
+<hr />
+<h3>DuckDB</h3>
+<p><strong>功能特性</strong>：进程内（In-Process）嵌入式分析型数据库，常被称作"分析型 SQLite"；MIT 开源，列式存储、向量化执行，支持标准 SQL。无独立服务进程，以库形式嵌入应用；可直接读写 CSV、Parquet、JSON 等文件，支持本地与 S3 等远程存储；ACID（MVCC）、单文件或内存库，与 Python/R/Java/Node 等有原生 API，扩展支持新类型与文件格式。</p>
+<p><strong>不足</strong>：单进程、单机，无分布式与多节点集群，数据量与并发受本机资源限制；不适合多用户共享的集中式数仓或高并发 OLTP；大结果集导出与持久化需注意内存与磁盘。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：进程内执行无网络与序列化开销，同机下对单表/多表聚合、JOIN 的延迟常优于"先读文件再在应用层算"；向量化与 Morsel-Driven 并行充分利用多核，GB～数十 GB 级数据分析在笔记本/单机上可达秒级。与 ClickHouse/Doris 等分布式 OLAP 相比，定位是"单机/嵌入"场景，不做横向扩展对比。</p>
+<p><strong>适用场景</strong>：本地/边缘的交互式数据分析与探索（Python/R + DuckDB 替代 Pandas/dplyr 处理中大数据）；直接对 CSV/Parquet/JSON 做 SQL 查询与转换，无需先导入数据库；嵌入式报表、数据工具与 CLI；数据科学、BI 原型与即席查询；不需要独立数据库服务、希望零运维的 OLAP 场景。</p>
+<hr />
+<h3>Apache Doris</h3>
+<p><strong>功能特性</strong>：Apache 开源 MPP 分析型数据库，FE（前端元数据）+ BE（后端存储计算）分离；兼容 MySQL 协议与语法。支持聚合模型、唯一模型、更新模型、明细模型，适合实时 upsert 与宽表；支持物化视图、分区、分桶、多种导入方式（Stream Load、Routine Load、Flink/Spark 等）；可对接 Hive/Iceberg/Hudi 等数据湖做联邦查询。</p>
+<p><strong>不足</strong>：偏分析负载，不适合 OLTP 高并发写；向量化与 CBO 在持续演进，复杂多表 JOIN 场景下与 StarRocks 等有差异；计算与存储一体，弹性扩缩容需数据重分布。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：MPP 架构下多机线性扩展，实时导入与多表 Join 表现良好；公开 benchmark 中简单聚合与 ClickHouse 互有高低，多表 JOIN 视数据量与模型而定。TB～PB 级数据、秒级～亚秒级查询较常见；部分场景下 CPU/内存占用较同类型引擎略高。</p>
+<p><strong>适用场景</strong>：实时数仓与离线数仓统一（Lambda/Kappa）；多维报表、BI 与 Ad-hoc 分析；数据湖（Hive/Iceberg/Hudi）查询加速与联邦分析；主键更新、实时大屏与指标汇总；对 Apache 协议、国产化与 MySQL 生态有要求的 OLAP 场景；TB 级为主、轻量易部署的实时分析。</p>
+<hr />
+<h3>StarRocks</h3>
+<p><strong>功能特性</strong>：基于 Apache Doris 深度演进的 MPP 引擎，全面向量化执行 + CBO 优化器；支持主键模型、明细模型、聚合模型等，实时 upsert 与秒级可见。v3.0+ 支持存算分离（S3/HDFS），弹性扩缩容无需迁数据；兼容 MySQL 协议，支持物化视图、多表 Join 与复杂分析。</p>
+<p><strong>不足</strong>：采用 Elastic License，商业使用需关注协议；与 Doris 同属分析型，不适合 OLTP；存算分离模式下冷数据查询延迟与成本需权衡。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：多表 JOIN 与高并发点查在 benchmark 中常优于 Doris；简单聚合与 ClickHouse 相当或更优。十亿～百亿行级、高 QPS 即席查询与报表场景常见；存算分离下可降低存储成本、按需扩展计算。</p>
+<p><strong>适用场景</strong>：高并发、低延迟的实时报表与 OLAP；替代传统商业数仓的复杂分析；数据湖加速与联邦查询；需要存算分离、弹性伸缩的云原生数仓；对多表 JOIN、CBO 与向量化有强需求的场景。</p>
+<hr />
+<h3>HBase</h3>
+<p><strong>功能特性</strong>：基于 HDFS 的分布式列存，强一致、水平扩展；适合按行键范围扫描和大数据存储。</p>
+<p><strong>不足</strong>：没有标准 SQL，需要上层 Phoenix 或自己封装；运维依赖 Hadoop 生态，复杂度高。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：单 Region 写入取决于 WAL 与 Compaction：开启 WAL（默认，强一致）约 1000～2000 TPS；关闭 WAL（牺牲持久化）约 5000～10000 TPS，"数万 TPS"仅在关闭 WAL + 异步刷盘等极端场景成立。生产环境强烈不建议关闭 WAL（牺牲数据持久性），上述关闭 WAL 的性能数据仅作理解架构极限的参考，而非可行生产配置。集群可线性扩展。大 Scan 时合理缓存（如 500～1000）可明显降延迟；按行键范围扫描是强项，全表扫描成本高。资源规划可参考：如 20 万 TPS、单行 1KB、3 副本场景下，年度磁盘量级在百 TB 级。</p>
+<p><strong>适用场景</strong>：海量明细数据按行键/时间范围存取（订单流水、消息历史、轨迹）；大数据平台底层存储（Hadoop 生态）；时序/日志类数据的长期归档与按范围扫描；消息队列的持久化与回溯；需要强一致、水平扩展且查询模式以"按 key/范围"为主的场景。</p>
+<hr />
+<h2>五、时序数据库（Time-Series）</h2>
+<h3>InfluxDB</h3>
+<p><strong>功能特性</strong>：专为时序设计，支持 Tag、Field、时间降采样、连续查询；单机/集群都有，语法贴近 SQL。</p>
+<p><strong>不足</strong>：集群版闭源收费；高基数（高基数 Tag）时要注意内存和查询性能。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：单机写入常见数万～十万点/秒量级，集群版更高；查询延迟与降采样、时间范围、Tag 基数强相关。高基数（如 device_id 做 Tag 且基数极大）时内存与查询会明显变差，需控制 Tag 设计或配合其他存储。</p>
+<p><strong>适用场景</strong>：IoT 传感器与设备遥测、工业采集与告警；服务器与中间件监控指标、APM 与 Trace 指标；实时监控大屏与降采样查询；需要按时间范围、Tag 多维过滤与聚合的时序分析；Telegraf + InfluxDB 的监控流水线。</p>
+<hr />
+<h3>GreptimeDB</h3>
+<p><strong>功能特性</strong>：开源、云原生统一可观测性数据库，在单一系统中存储指标（metrics）、日志（logs）、链路（traces）；支持 SQL 与 PromQL，列式存储、高压缩比；倒排/MinMax/全文/向量索引，支持高基数与日志检索；计算存储分离、Rust 实现，可对接 S3/Azure Blob 等对象存储。</p>
+<p><strong>不足</strong>：生态与社区相对 InfluxDB/Prometheus 较新，第三方集成与案例仍在积累；向量与 AI 能力处于演进中。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：公开 benchmark 中写入较 ES 快约 2～4.7 倍、较 InfluxDB 快约 2 倍、与 ClickHouse 相当；日志查询较 Loki 快约 40～80 倍，复杂时序查询较 InfluxDB 快约 2～11 倍。存储占用较 ES 可减少约 87%，较 ClickHouse/Loki 约节省 50%；单机日志写入可达十万级行/秒量级（如 8C16G 约 12 万行/秒）。</p>
+<p><strong>适用场景</strong>：用单一库替代"指标 + 日志 + 链路"多套系统的统一可观测性；IoT 与车联网海量传感器数据；APM、监控大盘与告警；AI/LLM 推理与模型监控；PB 级时序/日志的亚秒级分析；边缘与云的数据同步与统一查询。</p>
+<hr />
+<h3>Prometheus + Thanos / VictoriaMetrics</h3>
+<p><strong>功能特性</strong>：Prometheus 拉模型、PromQL、多维度标签；Thanos/VictoriaMetrics 解决长期存储与高可用。</p>
+<p><strong>不足</strong>：Prometheus 本身不是通用数据库，更偏向"监控存储"；大范围聚合查询需要配合其他组件。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：单实例百万级时间序列、每秒数十万点写入较常见；本地存储有容量与 retention 限制，Thanos/VictoriaMetrics 等可做长期存储与高可用。PromQL 聚合在单机内快，跨集群、大时间范围需依赖下游方案。</p>
+<p><strong>适用场景</strong>：云原生与 K8s 监控（cAdvisor、kube-state-metrics）；微服务与中间件指标采集；Prometheus 告警规则与 Grafana 数据源；Thanos/VictoriaMetrics 解决长期存储、多集群与高可用；对拉模型、多维标签、PromQL 有强依赖的监控体系。</p>
+<hr />
+<h3>TimescaleDB</h3>
+<p><strong>功能特性</strong>：基于 PostgreSQL 的时序扩展，自动按时间分区、压缩；完整 SQL 能力，可与业务库同库部署。</p>
+<p><strong>不足</strong>：写入吞吐和压缩比在极端场景下不如专用时序库，但换来的是 SQL 和生态统一。2.0+ 的列存引擎与并行写入在中等写入量（10 万点/秒以内）下，压缩比与吞吐可接近 InfluxDB。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：基于 PG，单机写入在万级～十万级点/秒量级；自动按时间分区与压缩，查询可用标准 SQL 与 PG 生态。与专用时序库比，极高压写入和压缩比会弱一些，适合"时序 + 关系"混合查询与中等写入量。</p>
+<p><strong>适用场景</strong>：已有 PostgreSQL 的技术栈，希望时序与业务表同库（如设备状态 + 设备主数据 JOIN）；工业与物联网的时序 + 关系混合分析；监控与指标的中等写入量、需标准 SQL 与 PG 生态（扩展、备份、权限）；不想引入独立时序组件的团队。</p>
+<hr />
+<h2>六、图数据库（Graph）</h2>
+<h3>Neo4j</h3>
+<p><strong>功能特性</strong>：属性图模型，Cypher 查询语言表达力强；适合关系遍历、路径分析、推荐、风控。</p>
+<p><strong>不足</strong>：社区版单机，企业版才支持分布式；大规模集群成本高。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：图遍历、多跳查询、路径分析是强项；在百万～千万级点边的单机场景下，Cypher 表达力强、延迟常在毫秒～百毫秒级。单机内存与磁盘限制明显，十亿级点边需企业版分布式或选其他图库。</p>
+<p><strong>适用场景</strong>：社交关系与好友推荐、二度人脉与影响力分析；知识图谱与实体关系推理；反欺诈与反洗钱的关系链与团伙发现；权限与组织架构的多级继承与校验；推荐系统的"用户-物品-行为"图；单机可承载的中等规模图场景。</p>
+<hr />
+<h3>Nebula Graph</h3>
+<p><strong>功能特性</strong>：分布式图数据库，支持千亿级点边；nGQL 语法，与 Cypher 思路接近；开源。</p>
+<p><strong>不足</strong>：已适配 Spark/Flink/BI 等，核心差距在可视化工具与社区案例丰富度，功能完整性上与 Neo4j 的差距在缩小，仍有一定学习成本。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：分布式架构，可支撑千亿级点边；多跳查询、全图分析在集群上线性扩展。与 Neo4j 相比，同规模图数据下延迟与吞吐取决于分片与查询模式，适合"图很大、必须分布式"的场景。</p>
+<p><strong>适用场景</strong>：超大规模社交与推荐图、知识图谱与实体链接；反作弊与团伙挖掘、多跳关系链分析；需要水平扩展的图存储与计算；开源、可自建且需千亿级点边能力的场景；与 Spark/Flink 等大数据组件集成的图分析。</p>
+<hr />
+<h2>七、搜索引擎型</h2>
+<h3>Elasticsearch</h3>
+<p><strong>功能特性</strong>：基于 Lucene，全文检索、聚合、高亮、Suggest；分布式、近实时；支持复杂过滤与多维分析。</p>
+<p><strong>不足</strong>：资源占用大，写入与查询调优复杂；强一致和事务能力弱，不适合做主库。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：写入 QPS 与文档大小强相关：小文档（＜1KB，如日志）单节点（8 核 16G）优化后约 1 万～3 万 QPS；大文档（＞10KB，如富文本）单节点仅 500～2000 QPS，选型时需按文档口径评估。大规模集群在极端优化与特定场景下（如大量分片、精心设计的索引映射、关闭不必要特性、优化硬件与批处理写入等）有百万级 QPS 案例，新用户不宜直接对标此量级；1 亿条写入优化后可在数百秒内完成。查询在全文与聚合上表现好，但内存与磁盘占用高；refresh_interval、translog 异步化、副本数等对写入影响大，调优后常有数倍提升。</p>
+<p><strong>适用场景</strong>：日志检索与 ELK 栈、运维排障与审计；站内搜索、商品与内容全文检索与高亮；APM 与调用链检索、错误与慢请求分析；监控告警与指标聚合（与 Kibana）；内容推荐与标签筛选、多维过滤与排序；需要"检索 + 聚合"的检索型业务。</p>
+<hr />
+<h3>OpenSearch</h3>
+<p><strong>功能特性</strong>：从 Elasticsearch 分支而来，兼容 ES API，开源；AWS 有托管版。</p>
+<p><strong>不足</strong>：与 ES 功能逐步分化，迁移和版本对应需要评估。</p>
+<p><strong>性能参考</strong>（数据来自公开基准与案例，非作者实测）：与 Elasticsearch 同源，性能量级相近；写入与查询能力在同一数量级，具体以官方 benchmark 与迁移指南为准。</p>
+<p><strong>适用场景</strong>：需要 ES 能力但希望规避 Elastic 商业许可的日志与搜索场景；AWS 生态内的托管搜索与日志（OpenSearch Service）；从 ES 迁移的兼容路径；与 AWS Lambda、Kinesis、S3 等集成的数据摄入与检索。</p>
+<hr />
+<h2>八、选型时怎么做决定</h2>
+<p><strong>第一步：先定类型</strong> —— 看业务需求更适合哪一类库，用下面这张表对号入座：</p>
+<table>
+<thead>
+<tr>
+<th>业务需求 / 场景</th>
+<th>推荐数据库类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>强事务、多表关联、一致性要求高</td>
+<td>关系型（MySQL / PostgreSQL / TiDB / Oracle 等）</td>
+</tr>
+<tr>
+<td>结构常变、嵌套数据、内容/用户画像</td>
+<td>文档型（MongoDB 等）</td>
+</tr>
+<tr>
+<td>缓存、会话、限流、排行榜、消息队列</td>
+<td>键值型（Redis 等）</td>
+</tr>
+<tr>
+<td>多维分析、报表、数仓、聚合查询</td>
+<td>列式 / 分析型（ClickHouse / Doris / StarRocks 等）</td>
+</tr>
+<tr>
+<td>监控指标、IoT 传感器、按时间聚合</td>
+<td>时序（InfluxDB / GreptimeDB / Prometheus 等）</td>
+</tr>
+<tr>
+<td>关系网络、多跳查询、推荐/风控/知识图谱</td>
+<td>图（Neo4j / Nebula Graph 等）</td>
+</tr>
+<tr>
+<td>全文检索、日志检索、复杂筛选与聚合</td>
+<td>搜索引擎（Elasticsearch / OpenSearch 等）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>第二步：再看约束</strong> —— 在候选类型里筛一轮：团队会不会用、运维成本、是否上云、有没有国产化/信创要求。</p>
+<p><strong>第三步：最后做减法</strong> —— 同一类型里只保留 1～2 个主流方案，避免同时维护多套相似数据库。</p>
+<p>数据库没有银弹，只有合适。先定类型、再看约束、最后做减法，按场景选型，架构才能稳、准、省。</p>
+<p>没有"万能库"，只有"适合当前业务阶段和团队"的库。按上面三步对照前文的特性、不足和场景，能更快缩小候选范围，少踩坑。</p>
+<p>性能数据存在口径不统一、场景未完全统一的前提，仅作量级参考；选型时应重点参考"适用场景"与"功能特性/不足"，最终性能与容量以实际硬件与业务压测为准。</p>
+    </article>
+</body>
+</html>

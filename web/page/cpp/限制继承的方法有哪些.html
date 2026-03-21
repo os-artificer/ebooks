@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 各版本"限制继承"都有哪些招？</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 各版本"限制继承"都有哪些招？</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-03-08</p>
+</blockquote>
+<p>一说"限制继承"，其实有两层意思：一是<strong>不让别人再继承这个类</strong>（终结类），二是<strong>不让子类再重写某个虚函数</strong>。本文按 C++ 版本捋一遍，怎么实现、怎么选。</p>
+<hr />
+<h2>一、不让类再被继承（终结类）</h2>
+<h3>C++11 起：用 final 就行</h3>
+<p>从 C++11 开始，做法就一种：给类加上 <code>final</code>，谁再继承谁就编译报错。</p>
+<pre><code class="language-cpp">class NonInheritable final {
+public:
+    void doSomething() {}
+private:
+    int _value = 0;
+};
+
+// class BadChild : public NonInheritable { };  // 编译错误
+</code></pre>
+<p>简单、好读、零心智负担，能上 C++11 就直接用这个。</p>
+<h3>C++98/03：没有 final，只能玩技巧</h3>
+<p>那时候没有 <code>final</code>，想达到"不能继承"的效果，只能靠一些套路。注意：这些套路多半是<strong>让派生类没法被正常实例化</strong>，而不是从语法上禁止写"继承"关系。</p>
+<p><strong>套路 1：私有构造函数 + 虚继承（有局限）</strong></p>
+<p>思路是：做一个辅助类，构造函数 private，只把"最终类"设为 friend，最终类虚继承它。虚继承时，<strong>最终派生类</strong>负责直接调用虚基类的构造函数；所以从最终类再派生的类在<strong>实例化</strong>时，会尝试调用辅助类的构造，因无权限而报错。</p>
+<p>但很多编译器<strong>只有在真正实例化派生类时</strong>才报错。如果你只写 <code>class BadChild : public FinalClass {};</code> 而从不创建 <code>BadChild</code> 对象，编译常常会通过，起不到"一写继承就报错"的效果。所以这只是<strong>阻止派生类被实例化</strong>，不是从语法上禁止继承。</p>
+<pre><code class="language-cpp">class SealedHelper {
+    friend class FinalClass;
+private:
+    SealedHelper() {}
+};
+
+class FinalClass : virtual SealedHelper {
+public:
+    void doSomething() {}
+private:
+    int _value = 0;
+};
+
+// class BadChild : public FinalClass {};
+// BadChild b;  // 只有到这一句才会报错；仅声明 BadChild 不实例化则可能不报错
+</code></pre>
+<p><strong>套路 2：模板 + 虚继承（更通用，同样局限）</strong></p>
+<p>用模板把"谁可以继承"绑死，不用给每个最终类写一个 SealedHelper。和套路 1 一样，<strong>只有实例化派生类时</strong>才会触发错误，只声明派生类不创建对象时，很多编译器不会报错。</p>
+<pre><code class="language-cpp">template &lt;typename T&gt;
+class SealedBase {
+    friend T;
+private:
+    SealedBase() {}
+};
+
+class MyFinalClass : virtual SealedBase&lt;MyFinalClass&gt; {
+public:
+    void doSomething() {}
+private:
+    int _value = 0;
+};
+
+// class BadChild : public MyFinalClass {};
+// BadChild b;  // 只有到这一句才会报错
+</code></pre>
+<p><strong>套路 3：用宏统一写法</strong></p>
+<p>想同一份代码在 C++98 和 C++11 下都能编译，可以用宏：C++11 时把 <code>FINAL</code> 展开成 <code>final</code>，C++98 时展开成空。这样类声明写成 <code>class X FINAL { }</code>，在 C++11 下真正禁止继承，在 C++98 下只是普通类（语法上不会报错，但起不到限制作用）。</p>
+<pre><code class="language-cpp">#if __cplusplus &gt;= 201103L
+#  define FINAL final
+#else
+#  define FINAL  /* C++98 下为空，无法真正限制继承 */
+#endif
+
+class MySealedClass FINAL {
+public:
+    void doSomething() {}
+private:
+    int _value = 0;
+};
+
+// class BadChild : public MySealedClass { };  // C++11 下编译错误；C++98 下可编译但无限制
+</code></pre>
+<p>C++98 下若想真正限制继承，还是要用上面虚继承那一套；宏只是让"加 final"的写法在跨版本时统一，少改代码。</p>
+<p><strong>套路 4：最终类自身私有析构 + Create/Destroy（不依赖虚继承）</strong></p>
+<p>把<strong>最终类自己</strong>的析构函数设为 private，再提供静态的 <code>Create()</code> 和 <code>Destroy()</code>（或自定义 deleter）。派生类析构时会隐式调用最终类的析构，但没有权限访问其 private 成员，会编译失败。注意：必须是<strong>最终类</strong>私有析构才有效；若只是基类私有析构、最终类做 friend，析构时仍由最终类调用基类析构，再派生出去的类照样能正常析构，拦不住。</p>
+<pre><code class="language-cpp">class NoInheritFinal {
+public:
+    static NoInheritFinal* Create() { return new NoInheritFinal; }
+    static void Destroy(NoInheritFinal* p) { if (p) p-&gt;~NoInheritFinal(); }
+    void doSomething() {}
+private:
+    NoInheritFinal() {}
+    ~NoInheritFinal() {}
+    int _value;
+};
+
+// class BadChild : public NoInheritFinal { };  // 编译错误：无法访问 NoInheritFinal 的私有析构
+</code></pre>
+<p><strong>套路 5：最终类自身私有构造 + 静态工厂（不依赖虚继承）</strong></p>
+<p>不让最终类被继承，也可以不搞基类，直接在"最终类"上做文章：构造函数全设为 private，只提供静态工厂（如 <code>static FinalClass* Create()</code>）。谁想继承这个类，子类构造时必须调用最终类的构造函数，但没权限访问 private，所以子类没法被实例化。缺点是不能栈上创建，只能通过工厂拿堆对象。</p>
+<pre><code class="language-cpp">class StandaloneFinal {
+public:
+    static StandaloneFinal* Create() { return new StandaloneFinal; }
+    void doSomething() {}
+private:
+    StandaloneFinal() {}
+    int _value = 0;
+};
+
+// class BadChild : public StandaloneFinal { };  
+// 可写，但 BadChild 无法构造：调不到 StandaloneFinal 的私有构造
+</code></pre>
+<p>C++98/03 里想搞"终结类"：套路 1、2 只有实例化派生类时才报错，不够彻底；套路 4、5（最终类私有析构或私有构造 + 工厂）不依赖虚继承，一继承就会在析构/构造上报错。能升级到 C++11 的话，直接 <code>class X final</code> 最省心。</p>
+<hr />
+<h2>二、不让虚函数再被重写（锁死某个 override）</h2>
+<p>有的基类里，某个虚函数只希望某一层实现"定稿"，后面的子类别再改了，这时候就要"限制重写"。</p>
+<h3>C++11 起：虚函数后加 final</h3>
+<p>在虚函数声明后面加上 <code>final</code>，派生类就不能再 override 它了。</p>
+<pre><code class="language-cpp">class Base {
+public:
+    virtual void foo() { }
+    virtual void bar() final { }  // 不允许再重写
+private:
+    int _value = 0;
+};
+
+class Derived : public Base {
+public:
+    void foo() override { }      // OK
+    // void bar() override { }   // 编译错误：bar 是 final 的
+private:
+    int _count = 0;
+};
+</code></pre>
+<p>这里只限制"继承+重写"，不限制"继承"本身，所以和前面的"终结类"是两回事：一个管类，一个管单个虚函数。</p>
+<h3>C++98/03：没有 final，只能靠约定</h3>
+<p>早期没有 <code>final</code>，没法从语法上禁止重写，只能靠文档或命名约定（比如注明"请勿重写"），或者把不想被重写的逻辑放到非虚函数里，由虚函数内部调用来间接"锁死"行为，属于设计上的补救，不是语法级限制。</p>
+<hr />
+<h2>三、小结怎么选</h2>
+<table>
+<thead>
+<tr>
+<th>目标</th>
+<th>C++11 及以上</th>
+<th>C++98/03</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>类不能再被继承</td>
+<td><code>class X final { };</code></td>
+<td>虚继承+私有构造（仅实例化时报错）/ 最终类私有析构或私有构造+工厂；跨版本可用 <code>FINAL</code> 宏（C++98 下仅统一写法）</td>
+</tr>
+<tr>
+<td>虚函数不能再被重写</td>
+<td><code>virtual void f() final;</code></td>
+<td>无语法支持，靠约定或设计</td>
+</tr>
+</tbody>
+</table>
+<p>一句话：<strong>能上 C++11 就尽量用 final；老项目卡在 C++98/03，就用虚继承那一套实现"终结类"，虚函数的重写限制只能靠约定。</strong></p>
+    </article>
+</body>
+</html>

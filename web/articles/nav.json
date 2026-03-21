@@ -1,0 +1,56 @@
+{
+  "categories": [
+    {
+      "key": "cpp",
+      "title": "C++",
+      "open": true,
+      "summaryClass": "nav-category--cpp",
+      "items": [
+        {
+          "href": "./page/cpp/枚举类型的特点及用法.html",
+          "text": "C++ 枚举类型：特点、用法与注意事项"
+        },
+        {
+          "href": "./page/cpp/无锁队列的实现原理.html",
+          "text": "C++ 高性能编程之无锁队列的实现原理"
+        },
+        {
+          "href": "./page/cpp/限制继承的方法有哪些.html",
+          "text": "C++ 各版本\"限制继承\"都有哪些招？"
+        },
+        {
+          "href": "./page/cpp/匿名namespace有什么作用.html",
+          "text": "C++ 匿名 namespace 有什么作用？"
+        }
+      ]
+    },
+    {
+      "key": "golang",
+      "title": "Go",
+      "open": false,
+      "summaryClass": "nav-category--go",
+      "items": [
+        {
+          "href": "./page/golang/怎么实现chan的读写超时.html",
+          "text": "Go 中怎么实现 chan 读写超时？"
+        }
+      ]
+    },
+    {
+      "key": "tech-arch",
+      "title": "技术架构",
+      "open": false,
+      "summaryClass": "nav-category--arch",
+      "items": [
+        {
+          "href": "./page/tech-arch/A2A-proto.html",
+          "text": "什么是 A2A？"
+        },
+        {
+          "href": "./page/tech-arch/数据库选型方案.html",
+          "text": "2026 数据库选型指南：从 OLTP 到时序一网打尽"
+        }
+      ]
+    }
+  ]
+}

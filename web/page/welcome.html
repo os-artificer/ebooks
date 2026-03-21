@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>欢迎关注 — os-artificer 技术圈</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            line-height: 1.6;
+            color: #374151;
+            background: #fafafa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .welcome {
+            max-width: 28rem;
+            text-align: center;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 12px;
+            padding: 2rem 1.75rem;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .welcome h1 {
+            margin: 0 0 0.75rem;
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: #111827;
+        }
+
+        .welcome p {
+            margin: 0 0 1.25rem;
+            font-size: 0.95rem;
+            color: #6b7280;
+        }
+
+        .welcome .qr-wrap {
+            display: inline-block;
+            padding: 0.5rem;
+            background: #fff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+        }
+
+        .welcome img {
+            display: block;
+            width: 200px;
+            max-width: min(200px, 70vw);
+            height: auto;
+            vertical-align: middle;
+        }
+
+    </style>
+</head>
+
+<body>
+    <div class="welcome">
+        <h1>欢迎关注公众号</h1>
+        <p>扫描下方二维码，订阅 <strong>os-artificer 技术圈</strong>，获取更新与更多技术内容。左侧目录中选择文章即可在此区域阅读。</p>
+        <div class="qr-wrap">
+            <picture>
+                <source srcset="../images/wechat-qrcode.webp" type="image/webp">
+                <img src="../images/wechat-qrcode.png" width="200" height="51"
+                    alt="os-artificer 技术圈 公众号二维码" decoding="async" fetchpriority="high">
+            </picture>
+        </div>
+    </div>
+</body>
+
+</html>

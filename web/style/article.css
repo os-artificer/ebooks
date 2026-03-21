@@ -1,0 +1,114 @@
+/* Article stylesheet
+ * Used by injected article content under `ebooks/#article`.
+ * Provide readable code, table, and welcome-card styling.
+ */
+
+#article {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.7;
+  padding: 24px;
+  overflow: auto;
+}
+
+#article pre {
+  background: #0b1020;
+  color: #e6edf3;
+  padding: 12px;
+  border-radius: 10px;
+  overflow: auto;
+}
+
+#article code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+}
+
+#article table {
+  border-collapse: collapse;
+}
+
+#article th,
+#article td {
+  border: 1px solid #d1d5db;
+  padding: 6px 10px;
+}
+
+#article th {
+  background: #f9fafb;
+  font-weight: 600;
+}
+
+#article img {
+  max-width: 100%;
+  height: auto;
+}
+
+#article .welcome {
+  max-width: 28rem;
+  text-align: center;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 2rem 1.75rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  margin: 0 auto;
+}
+
+#article .welcome h1 {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+#article .welcome p {
+  margin: 0 0 1.25rem;
+  font-size: 0.95rem;
+  color: #6b7280;
+}
+
+#article .welcome .qr-wrap {
+  display: inline-block;
+  padding: 0.5rem;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+#article .welcome img {
+  display: block;
+  width: 200px;
+  max-width: min(200px, 70vw);
+  height: auto;
+  vertical-align: middle;
+}
+
+#article article {
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+/*
+ * 草稿元信息（Markdown `>` 生成的首段 blockquote）：与标题、正文左缘对齐。
+ * 站点内嵌阅读时只注入 body，不带上文内 <style>，故须在此覆盖 UA 对 blockquote 的左右缩进。
+ */
+#article article > blockquote:first-of-type {
+  margin: 0.5rem 0 1rem;
+  margin-left: 0;
+  margin-right: 0;
+  margin-inline: 0;
+  padding: 0;
+  padding-left: 0;
+  padding-inline-start: 0;
+  border-left: none;
+  color: #4b5563;
+  font-size: 0.92em;
+}
+
+#article article > blockquote:first-of-type p {
+  margin: 0.2em 0;
+  line-height: 1.5;
+  padding: 0;
+}
+
+
+

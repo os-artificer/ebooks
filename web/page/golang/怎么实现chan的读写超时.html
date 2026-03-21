@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go 中怎么实现 chan 读写超时？</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">Go 中怎么实现 chan 读写超时？</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-03-05</p>
+</blockquote>
+<p>Go 的 chan 读写默认是阻塞的：没有数据时读会一直等，缓冲区满时写也会一直等。</p>
+<p>实际业务里往往需要“等一会儿就放弃”，也就是带超时的读写。</p>
+<p>做法就是用 <code>select</code>：在“正常读写”和“超时”两个分支里二选一，谁先满足就执行谁。</p>
+<p>下面按超时检测方式分类说明。</p>
+<hr />
+<p><strong>一、基于 time 包</strong></p>
+<p>time.After：单次读超时或写超时最简写法，在 <code>select</code> 里用 <code>case &lt;-time.After(d)</code> 与读写 case 二选一。读超时：同时监听“从 chan 收数据”和“超时”，先到先执行；写超时同理，<code>case ch &lt;- value</code> 与 <code>case &lt;-time.After(d)</code> 二选一。</p>
+<p>读超时示例：</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string, 1)
+    go func() {
+        time.Sleep(2 * time.Second)
+        ch &lt;- &quot;result&quot;
+    }()
+
+    select {
+    case v := &lt;-ch:
+        fmt.Println(&quot;收到:&quot;, v)
+    case &lt;-time.After(1 * time.Second):
+        fmt.Println(&quot;读超时&quot;)
+    }
+}
+</code></pre>
+<p>写超时示例：</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan int, 1)
+    ch &lt;- 1 // 已满，再写会阻塞
+
+    select {
+    case ch &lt;- 2:
+        fmt.Println(&quot;写入成功&quot;)
+    case &lt;-time.After(100 * time.Millisecond):
+        fmt.Println(&quot;写超时&quot;) // 无消费者时会走这里
+    }
+}
+</code></pre>
+<p>注意：<code>time.After(d)</code> 每次调用都会新建一个 <code>time.Timer</code>，到期前不会被 GC 回收，在长循环或高并发里反复调用会泄漏。循环里做超时请用下面的显式 Timer 或 context。</p>
+<p><strong>推荐</strong>：单次读/写超时直接用。
+<strong>不推荐</strong>：循环或高并发里反复用，此时应改用显式 Timer 或 context。</p>
+<p>显式 Timer：用 <code>time.NewTimer(d)</code>，在 <code>select</code> 里 <code>case &lt;-timer.C</code>。用完后 <code>timer.Stop()</code> 回收，适合循环里复用。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    timer := time.NewTimer(1 * time.Second)
+    defer timer.Stop()
+
+    select {
+    case v := &lt;-ch:
+        fmt.Println(&quot;收到:&quot;, v)
+    case &lt;-timer.C:
+        fmt.Println(&quot;读超时&quot;)
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：循环或需要复用同一 Timer 时用，记得 <code>defer timer.Stop()</code>，无泄漏问题。</p>
+<p>Timer.Reset 循环复用：循环里多次做超时检测时，只建一个 Timer，每轮开始时 <code>timer.Reset(d)</code> 复用，避免每轮 NewTimer 或 time.After 泄漏。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    go func() {
+        time.Sleep(2 * time.Second)
+        ch &lt;- &quot;result&quot;
+    }()
+
+    timer := time.NewTimer(1 * time.Second)
+    defer timer.Stop()
+    for {
+        timer.Reset(1 * time.Second)
+        select {
+        case v := &lt;-ch:
+            fmt.Println(&quot;收到:&quot;, v)
+            return
+        case &lt;-timer.C:
+            fmt.Println(&quot;本轮超时，继续等&quot;)
+        }
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：循环里多次做超时时用，一个 Timer 反复 <code>Reset</code>，既避免泄漏又清晰。
+<strong>不推荐</strong>：每轮都 <code>NewTimer</code> 或 <code>time.After</code>。</p>
+<p>time.AfterFunc：超时后执行回调，在回调里关闭或向 done chan 发送，适合超时后做清理或通知多处。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    done := make(chan struct{})
+    time.AfterFunc(1*time.Second, func() { close(done) })
+
+    select {
+    case v := &lt;-ch:
+        fmt.Println(&quot;收到:&quot;, v)
+    case &lt;-done:
+        fmt.Println(&quot;读超时&quot;)
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：超时后需要执行回调、或通知多个 goroutine 时用。
+<strong>不推荐</strong>：只做"到点就停"的简单超时，用 Timer/context 更直观。</p>
+<p><strong>二、基于 context</strong></p>
+<p>WithTimeout：最常用，超时在调用链里传递、统一取消都方便。读超时：<code>select</code> 里 <code>case v := &lt;-ch</code> 与 <code>case &lt;-ctx.Done()</code>；写超时把前者换成 <code>case ch &lt;- value</code> 即可。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;context&quot;
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+    defer cancel()
+
+    select {
+    case v := &lt;-ch:
+        fmt.Println(&quot;收到:&quot;, v)
+    case &lt;-ctx.Done():
+        fmt.Println(&quot;超时:&quot;, ctx.Err())
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：超时需在调用链传递或统一取消时首选；代码清晰、无 Timer 泄漏。</p>
+<p>WithDeadline：传入绝对截止时间，与 <code>WithTimeout</code> 等价，适合“在某时刻前必须完成”的场景。用法同上，仅创建 ctx 时用 <code>context.WithDeadline(parent, time)</code>。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;context&quot;
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    deadline := time.Now().Add(1 * time.Second) // 绝对截止时刻
+    ctx, cancel := context.WithDeadline(context.Background(), deadline)
+    defer cancel()
+
+    select {
+    case v := &lt;-ch:
+        fmt.Println(&quot;收到:&quot;, v)
+    case &lt;-ctx.Done():
+        fmt.Println(&quot;超时:&quot;, ctx.Err())
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：按绝对截止时间控制时用。</p>
+<p>WithTimeoutCause（Go 1.20+）：与 <code>WithTimeout</code> 相同，但可传入自定义"取消原因"，便于区分超时、主动取消等。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;context&quot;
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    ctx, cancel := context.WithTimeoutCause(context.Background(), 1*time.Second, fmt.Errorf(&quot;自定义超时原因&quot;))
+    defer cancel()
+
+    select {
+    case v := &lt;-ch:
+        fmt.Println(&quot;收到:&quot;, v)
+    case &lt;-ctx.Done():
+        fmt.Println(&quot;超时:&quot;, context.Cause(ctx)) // 拿到 WithTimeoutCause 传入的 error
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：需要区分"超时"与"主动取消"、或在日志/监控里记录具体原因时用。Go 1.20 以下不可用。</p>
+<p><strong>三、自建超时 chan</strong></p>
+<p>单独 goroutine 在 sleep 后 close 或发送，select 监听该 chan，便于复用。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    timeout := make(chan struct{})
+    go func() {
+        time.Sleep(1 * time.Second)
+        close(timeout)
+    }()
+
+    select {
+    case v := &lt;-ch:
+        fmt.Println(&quot;收到:&quot;, v)
+    case &lt;-timeout:
+        fmt.Println(&quot;读超时&quot;)
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：需要复用同一个 timeout channel、或自定义超时前后逻辑时用。<strong>不推荐</strong>仅为了“单次超时”而写，用 <code>time.After</code> 或 context 更简单。</p>
+<p><strong>四、基于 reflect</strong></p>
+<p>reflect.Select：channel 或 case 数量在运行时才确定时，用 <code>reflect.Select</code> 构造 select，把超时（如 <code>timer.C</code> 或 done chan）作为一个 case 加入即可。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;reflect&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    timer := time.NewTimer(1 * time.Second)
+    defer timer.Stop()
+    cases := []reflect.SelectCase{
+        {Dir: reflect.SelectRecv, Chan: reflect.ValueOf(ch)},
+        {Dir: reflect.SelectRecv, Chan: reflect.ValueOf(timer.C)},
+    }
+    chosen, v, _ := reflect.Select(cases)
+    if chosen == 0 {
+        fmt.Println(&quot;收到:&quot;, v.Interface())
+    } else {
+        fmt.Println(&quot;读超时&quot;)
+    }
+}
+</code></pre>
+<p><strong>推荐</strong>：仅当 chan 或 case 数量在运行时才确定、必须动态构造 select 时用。<strong>不推荐</strong>常规业务用，可读性差、有反射开销。</p>
+<p><strong>五、轮询方式</strong></p>
+<p>轮询 + 截止时间：循环里用 <code>default</code> 非阻塞读，再 <code>time.Sleep</code> 一小段，重复直到超时或读到数据。</p>
+<pre><code class="language-go">package main
+
+import (
+    &quot;fmt&quot;
+    &quot;time&quot;
+)
+
+func main() {
+    ch := make(chan string)
+    deadline := time.Now().Add(1 * time.Second)
+    for time.Now().Before(deadline) {
+        select {
+        case v := &lt;-ch:
+            fmt.Println(&quot;收到:&quot;, v)
+            return
+        default:
+        }
+        time.Sleep(10 * time.Millisecond)
+    }
+    fmt.Println(&quot;读超时&quot;)
+}
+</code></pre>
+<p><strong>不推荐</strong>：占用 CPU 做空转、间隔不好选（太短浪费，太长响应慢）、代码啰嗦。仅在没有 select 的极少数环境或历史代码里可能见到，新代码用 select + Timer/context。</p>
+<hr />
+<p><strong>小结</strong></p>
+<p>chan 读/写超时的本质都是：用 <code>select</code> 在“正常读写”和“超时信号”之间二选一。</p>
+<table>
+<thead>
+<tr>
+<th>场景/方式</th>
+<th>推荐</th>
+<th>不推荐</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>单次超时</td>
+<td><code>time.After</code>、<code>context.WithTimeout</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>循环/高并发超时</td>
+<td>显式 <code>NewTimer</code>+<code>Stop</code>/<code>Reset</code>、context</td>
+<td>循环里用 <code>time.After</code>（泄漏）</td>
+</tr>
+<tr>
+<td>需区分取消原因</td>
+<td><code>WithTimeoutCause</code>（Go 1.20+）</td>
+<td>—</td>
+</tr>
+<tr>
+<td>动态多 chan</td>
+<td><code>reflect.Select</code></td>
+<td>—</td>
+</tr>
+<tr>
+<td>简单超时</td>
+<td>—</td>
+<td>自建 timeout chan、AfterFunc（过度设计）</td>
+</tr>
+<tr>
+<td>轮询实现</td>
+<td>—</td>
+<td>轮询+截止时间（浪费 CPU、难维护）</td>
+</tr>
+</tbody>
+</table>
+    </article>
+</body>
+</html>
