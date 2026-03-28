@@ -1,6 +1,9 @@
 # Prerequisites
 *.d
 .venv
+.venv-xhs/
+
+*xhs-*
 
 # Compiled Object files
 *.slo
