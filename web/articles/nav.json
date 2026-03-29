@@ -49,6 +49,10 @@
         {
           "href": "./page/golang/怎么实现chan的读写超时.html",
           "text": "Go 中怎么实现 chan 读写超时？"
+        },
+        {
+          "href": "./page/golang/怎么实现守护进程.html",
+          "text": "用 Go 实现父子双进程守护：从原理到落地"
         }
       ]
     },
