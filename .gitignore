@@ -3,8 +3,8 @@
 .venv
 .venv-xhs/
 .cursor
-*xhs-*
-
+xhs/
+**/__pycache__
 # Compiled Object files
 *.slo
 *.lo
