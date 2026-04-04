@@ -9,7 +9,11 @@ from __future__ import annotations
 
 import argparse
 import re
+import shutil
+import subprocess
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import markdown
@@ -20,14 +24,86 @@ DEFAULT_XHS_ROOT = REPO_ROOT / "xhs"
 DRAFT_CPP = REPO_ROOT / "drafts" / "cpp"
 DRAFT_GOLANG = REPO_ROOT / "drafts" / "golang"
 
+# Offline-safe rendering: cache TTFs here; @font-face uses file:// absolute URLs (Playwright has no set_content base_url).
+XHS_FONT_CACHE = REPO_ROOT / "tools" / "fonts" / "xhs_cache"
+# (dest_filename, gstatic URL) — Noto Sans SC + JetBrains Mono weights used by poster & body HTML.
+_XHS_FONT_DOWNLOADS: list[tuple[str, str]] = [
+    (
+        "NotoSansSC-400.ttf",
+        "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaG9_FnYw.ttf",
+    ),
+    (
+        "NotoSansSC-600.ttf",
+        "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaGwHCnYw.ttf",
+    ),
+    (
+        "NotoSansSC-700.ttf",
+        "https://fonts.gstatic.com/s/notosanssc/v40/k3kCo84MPvpLmixcA63oeAL7Iqp5IZJF9bmaGzjCnYw.ttf",
+    ),
+    (
+        "JetBrainsMono-400.ttf",
+        "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxjPQ.ttf",
+    ),
+    (
+        "JetBrainsMono-600.ttf",
+        "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8FqtjPQ.ttf",
+    ),
+]
+
+
+def _xhs_download_file(url: str, dest: Path) -> None:
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "Mozilla/5.0 (compatible; ebooks-xhs-md-to-png/1.0)"},
+    )
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        dest.write_bytes(resp.read())
+
+
+_SYSTEM_FONT_DIR = Path("/usr/share/fonts/truetype/xhs-cache")
+
+
+def ensure_xhs_font_cache() -> Path:
+    """Download fonts into tools/fonts/xhs_cache and install into system font dir for Chromium."""
+    XHS_FONT_CACHE.mkdir(parents=True, exist_ok=True)
+    need_fc_cache = False
+    for name, url in _XHS_FONT_DOWNLOADS:
+        dest = XHS_FONT_CACHE / name
+        if not (dest.is_file() and dest.stat().st_size > 4096):
+            tmp = dest.with_suffix(dest.suffix + ".part")
+            try:
+                _xhs_download_file(url, tmp)
+                tmp.replace(dest)
+            except (urllib.error.URLError, OSError) as e:
+                if tmp.is_file():
+                    tmp.unlink(missing_ok=True)
+                print(
+                    f"xhs_md_to_png: failed to download font {name!r} ({e}). "
+                    "Check network or place the file manually under tools/fonts/xhs_cache/.",
+                    file=sys.stderr,
+                )
+                continue
+        sys_dest = _SYSTEM_FONT_DIR / name
+        if not (sys_dest.is_file() and sys_dest.stat().st_size == dest.stat().st_size):
+            _SYSTEM_FONT_DIR.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(dest, sys_dest)
+            need_fc_cache = True
+    if need_fc_cache and shutil.which("fc-cache"):
+        subprocess.run(["fc-cache", "-f", str(_SYSTEM_FONT_DIR)], check=False)
+    return XHS_FONT_CACHE
+
+
+def xhs_local_font_faces_style() -> str:
+    """Empty tag: fonts are now system-installed; CSS font-family fallback handles loading."""
+    ensure_xhs_font_cache()
+    return ""
+
 # 1080px width is common for XHS; background and typography tuned for readability.
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet"/>
+__XHS_LOCAL_FONTS__
 <style>
   * {{ box-sizing: border-box; }}
   html {{ background: #1a1a1a; }}
@@ -146,7 +222,7 @@ POSTER_CSS = """
     padding: 72px 56px 80px;
     background: #0e0c0a;
     color: #faf6ee;
-    font-family: "Noto Sans CJK SC", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB",
+    font-family: "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Hiragino Sans GB",
       "Microsoft YaHei", "Source Han Sans SC", "WenQuanYi Micro Hei", sans-serif;
   }
   .bg-grid {
@@ -237,9 +313,7 @@ POSTER_DOCUMENT_HEAD = """<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Noto+Sans+SC:wght@400;600;700&display=swap" rel="stylesheet"/>
+__XHS_LOCAL_FONTS__
 <style>
 """
 
@@ -405,7 +479,11 @@ def build_poster_html(title: str, badge: str, keywords: list[str], hook: str, la
     hook_html = _escape_html(hook) if hook else ""
     deco = _escape_html(deco_lines_for_lang(lang_label))
     # Assemble with __POSTER_*__ tokens — CSS is plain `{` `}` in POSTER_CSS (no str.format).
-    html = POSTER_DOCUMENT_HEAD + POSTER_CSS + POSTER_DOCUMENT_TAIL
+    html = (
+        POSTER_DOCUMENT_HEAD.replace("__XHS_LOCAL_FONTS__", xhs_local_font_faces_style())
+        + POSTER_CSS
+        + POSTER_DOCUMENT_TAIL
+    )
     return (
         html.replace("__POSTER_DECO__", deco)
         .replace("__POSTER_BADGE__", _escape_html(badge))
@@ -434,15 +512,10 @@ def render_cover_png(
 ) -> None:
     html = build_poster_html(title, badge, keywords, hook, lang_label)
     page.set_viewport_size({"width": 1080, "height": 1440})
-    page.set_content(html, wait_until="networkidle", timeout=120_000)
+    page.set_content(html, wait_until="load", timeout=120_000)
     page.evaluate("() => document.fonts.ready")
-    page.evaluate(
-        """async () => {
-          await document.fonts.load('48px "Noto Sans SC"');
-          await document.fonts.load('18px "JetBrains Mono"');
-        }"""
-    )
-    page.wait_for_timeout(400)
+    # Avoid document.fonts.load() here: local file:// @font-face can throw NetworkError in headless.
+    page.wait_for_timeout(900)
     page.locator(".wrap").screenshot(path=str(out_path), type="png")
 
 
@@ -459,12 +532,15 @@ def render_pngs(
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
         page = browser.new_page(viewport={"width": 1080, "height": 600})
+        font_tag = xhs_local_font_faces_style()
 
         for i, (a, b) in enumerate(line_slices, start=1):
             chunk = "\n".join(lines[a - 1 : b])
             body = md_to_html_fragment(chunk)
-            full_html = HTML_TEMPLATE.format(body=body)
-            page.set_content(full_html, wait_until="networkidle", timeout=120_000)
+            full_html = HTML_TEMPLATE.format(body=body).replace(
+                "__XHS_LOCAL_FONTS__", font_tag
+            )
+            page.set_content(full_html, wait_until="load", timeout=120_000)
             page.evaluate("() => document.fonts.ready")
             h = page.evaluate(
                 "() => Math.max(400, Math.ceil(document.documentElement.scrollHeight))"

@@ -43,3 +43,6 @@ xhs/
 
 # debug information files
 *.dwo
+
+# xhs_md_to_png: cached Google fonts (Noto Sans SC, JetBrains Mono), ~30MB
+tools/fonts/xhs_cache/
