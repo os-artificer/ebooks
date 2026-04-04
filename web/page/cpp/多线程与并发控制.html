@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 多线程用法与并发控制详解</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 多线程用法与并发控制详解</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-04-04</p>
+</blockquote>
+<p>C++11 起，标准库正式提供了线程、互斥量、条件变量、原子类型与异步任务支持，分别位于 <code>&lt;thread&gt;</code>、<code>&lt;mutex&gt;</code>、<code>&lt;condition_variable&gt;</code>、<code>&lt;atomic&gt;</code>、<code>&lt;future&gt;</code> 头文件中。下面按语法特性，把“怎么开线程”和“怎么控并发”捋一遍。</p>
+<hr />
+<h2>一、为啥总扯上“语法特性”</h2>
+<ul>
+<li><strong>可移动不可复制</strong>：<code>std::thread</code> 禁止拷贝，只能移动，避免好几个对象共管同一条 OS 线程。</li>
+<li><strong>RAII</strong>：<code>std::lock_guard</code>、<code>std::unique_lock</code> 用构造/析构配对加锁解锁，异常路径也不会漏解锁。</li>
+<li><strong>模板与完美转发</strong>：<code>std::thread</code> 构造函数用变参模板，把可调用对象和参数“原样”转给线程入口；要在线程里改外面的变量，得配合 <code>std::ref</code>。</li>
+<li><strong>内存模型与原子</strong>：<code>std::atomic</code> 加上 <code>memory_order</code>，把“别的线程啥时候能看见啥”写进语言，不全靠互斥量来猜。</li>
+<li><strong>C++20</strong>：<code>std::jthread</code> 能协作停止；<code>std::barrier</code>、<code>std::latch</code> 等再补一批同步原语。</li>
+</ul>
+<hr />
+<h2>二、<code>std::thread</code>：创建与生命周期</h2>
+<h3>基本写法</h3>
+<pre><code class="language-cpp">#include &lt;thread&gt;
+#include &lt;iostream&gt;
+
+void f(int x) { std::cout &lt;&lt; x &lt;&lt; &quot;\n&quot;; }
+
+int main() {
+    std::thread t(f, 42);   // 新线程执行 f(42)
+    t.join();               // 主线程等待 t 结束；必须 join 或 detach，否则 std::terminate
+    return 0;
+}
+</code></pre>
+<ul>
+<li><strong><code>join()</code></strong>：一直等到线程结束；适合“主线程要拿结果或把收尾做干净”的场景。</li>
+<li><strong><code>detach()</code></strong>：线程和 <code>std::thread</code> 对象脱钩，在后台跑；<strong>不能再 join</strong>，生命周期得自己兜住（别去引用已经销毁的栈上对象）。</li>
+</ul>
+<h3>函数、lambda、成员函数都能当入口</h3>
+<pre><code class="language-cpp">#include &lt;thread&gt;
+#include &lt;functional&gt;
+
+struct Worker {
+    void Run(int n) { (void)n; }
+};
+
+int main() {
+    auto lam = [] { return; };
+    std::thread t1(lam);
+
+    Worker w;
+    std::thread t2(&amp;Worker::Run, &amp;w, 1);  // 成员函数要传对象指针/引用
+
+    t1.join();
+    t2.join();
+    return 0;
+}
+</code></pre>
+<h3>传参：默认拷贝进线程栈，想改外面用 ref</h3>
+<p>线程构造里，<strong>默认会把参数拷贝或移动到线程自己的栈</strong>。要让线程改调用方的变量，用 <strong><code>std::ref</code> / <code>std::cref</code></strong>：</p>
+<pre><code class="language-cpp">#include &lt;thread&gt;
+#include &lt;functional&gt;
+
+void inc(int&amp; x) { ++x; }
+
+int main() {
+    int a = 0;
+    std::thread t(inc, std::ref(a));
+    t.join();
+    // a == 1
+    return 0;
+}
+</code></pre>
+<p>大对象可以 <strong><code>std::move</code></strong> 进线程，少一次多余拷贝。</p>
+<h3>thread 只能移动，不能拷贝</h3>
+<pre><code class="language-cpp">#include &lt;thread&gt;
+
+void f(int) {}
+
+int main() {
+    std::thread t1(f, 1);
+    std::thread t2 = std::move(t1);  // t1 不再代表那条线程
+    t2.join();
+    return 0;
+}
+</code></pre>
+<hr />
+<h2>三、互斥量：<code>std::mutex</code> 和 RAII 锁</h2>
+<p>头文件 <code>&lt;mutex&gt;</code>。</p>
+<h3>lock_guard：作用域就是临界区</h3>
+<p>构造时 <code>lock()</code>，析构时 <code>unlock()</code>，<strong>出了作用域自动放锁</strong>，写法最省事。</p>
+<pre><code class="language-cpp">#include &lt;mutex&gt;
+
+std::mutex m;
+int counter = 0;
+
+void bump() {
+    std::lock_guard&lt;std::mutex&gt; lk(m);
+    ++counter;
+}
+</code></pre>
+<h3>unique_lock：能先不加锁、能配合条件变量</h3>
+<p>可以 <strong>晚点再加锁</strong>、<strong>中间手动 unlock</strong>，跟 <strong><code>std::condition_variable</code></strong> 配套；也能 <code>std::adopt_lock</code> 接管你已经拿住的锁。</p>
+<pre><code class="language-cpp">#include &lt;mutex&gt;
+
+std::mutex m;
+
+void work() {
+    std::unique_lock&lt;std::mutex&gt; lk(m);
+    // ... 临界区 ...
+    lk.unlock();
+    // 非临界区干活
+    lk.lock();
+    // 再进临界区
+}
+</code></pre>
+<h3>C++17 的 scoped_lock：一次锁住多把互斥量</h3>
+<p><code>std::lock</code> 会按固定规则同时抢多把锁，再交给 <code>std::scoped_lock</code> 做 RAII，<strong>降低死锁概率</strong>。</p>
+<pre><code class="language-cpp">#include &lt;mutex&gt;
+
+std::mutex m1, m2;
+
+void both() {
+    std::scoped_lock lk(m1, m2);
+    // 同时持有 m1、m2
+}
+</code></pre>
+<h3>还有这些互斥量类型</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>干啥用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>std::timed_mutex</code></td>
+<td><code>try_lock_for</code> / <code>try_lock_until</code>，限时试一下</td>
+</tr>
+<tr>
+<td><code>std::recursive_mutex</code></td>
+<td>同一线程能多次 lock，慎用，容易把设计问题盖住</td>
+</tr>
+<tr>
+<td><code>std::shared_mutex</code></td>
+<td>多读单写，后面单独说</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>四、条件变量：等人、叫人</h2>
+<p><code>std::condition_variable</code> 要跟 <strong><code>std::unique_lock&lt;std::mutex&gt;</code></strong> 一起用。<strong>虚假唤醒</strong>免不了，所以 <strong><code>wait</code> 一定要带谓词</strong>，用循环把条件钉死。</p>
+<pre><code class="language-cpp">#include &lt;mutex&gt;
+#include &lt;condition_variable&gt;
+#include &lt;queue&gt;
+
+std::mutex m;
+std::condition_variable cv;
+std::queue&lt;int&gt; q;
+
+void producer(int v) {
+    {
+        std::lock_guard&lt;std::mutex&gt; lk(m);
+        q.push(v);
+    }
+    cv.notify_one();
+}
+
+int consumer() {
+    std::unique_lock&lt;std::mutex&gt; lk(m);
+    cv.wait(lk, [] { return !q.empty(); });
+    // 等价于 while 循环，自动处理虚假唤醒
+    int v = q.front();
+    q.pop();
+    return v;
+}
+</code></pre>
+<ul>
+<li><strong><code>notify_one()</code></strong>：叫醒一个正在等的。</li>
+<li><strong><code>notify_all()</code></strong>：全叫醒，适合状态一变大家都得重看的场景。</li>
+</ul>
+<p>C++20 还有 <code>std::condition_variable_any</code>，能跟 <code>std::shared_lock</code> 之类配合。</p>
+<hr />
+<h2>五、原子与内存序：<code>std::atomic</code></h2>
+<p>头文件 <code>&lt;atomic&gt;</code>。整型、指针等有特化；<strong><code>std::atomic&lt;T&gt;</code></strong> 保证对 <code>T</code> 的读写是原子的（在平台支持的前提下）。</p>
+<h3>先会写能用</h3>
+<pre><code class="language-cpp">#include &lt;atomic&gt;
+
+std::atomic&lt;int&gt; x{0};
+
+void f() {
+    x.fetch_add(1, std::memory_order_relaxed);
+}
+</code></pre>
+<h3>为啥要管 memory_order</h3>
+<p><code>std::mutex</code> 这类<strong>互斥量</strong>一边把临界区护住，一边帮你搭 <strong>happens-before</strong>。光用原子、不管顺序的话，编译器和 CPU 可能重排，别的线程会看到“中间态”，调试很头疼。</p>
+<p>常用序，从弱到强捋一遍：</p>
+<ul>
+<li><strong><code>memory_order_relaxed</code></strong>：只保证原子性，<strong>不当</strong>线程间同步用；计数、统计之类可以。</li>
+<li><strong><code>memory_order_acquire</code></strong>：读侧用；这次读之后的读写，不能跑到这次读前面去。</li>
+<li><strong><code>memory_order_release</code></strong>：写侧用；这次写之前的读写，不能跑到这次写后面去。</li>
+<li><strong><code>memory_order_acq_rel</code></strong>：读改写一条指令时，读写两边都带上 acquire/release。</li>
+<li><strong><code>memory_order_seq_cst</code></strong>：<strong>默认</strong>就是这个；全局一条总顺序，最强、最省心，代价也略高。</li>
+</ul>
+<p>一个典型的 <strong>release-acquire</strong> 把数据“发布”出去：</p>
+<pre><code class="language-cpp">#include &lt;atomic&gt;
+
+std::atomic&lt;bool&gt; ready{false};
+int data = 0;
+
+void producer() {
+    data = 42;
+    ready.store(true, std::memory_order_release);
+}
+
+void consumer() {
+    while (!ready.load(std::memory_order_acquire)) { }
+    int v = data;  // 能看见 42
+}
+</code></pre>
+<p>心里没底的时候，<strong>先全程默认 <code>seq_cst</code></strong>，真热点再收紧内存序也不迟。</p>
+<p><strong>注意：</strong><code>volatile</code> 不能替代 <code>std::atomic</code> 进行线程同步。<code>volatile</code> 仅防止编译器优化重排，不保证操作的原子性，也不建立线程间的 <strong>happens-before</strong> 关系。</p>
+<hr />
+<h2>六、异步：<code>std::async</code>、<code>std::future</code>、<code>std::promise</code></h2>
+<p>头文件 <code>&lt;future&gt;</code>。</p>
+<h3>std::async</h3>
+<pre><code class="language-cpp">#include &lt;future&gt;
+#include &lt;iostream&gt;
+
+int slow() { return 1; }
+
+int main() {
+    auto fut = std::async(std::launch::async, slow);
+    // ... 干别的 ...
+    int r = fut.get();  // 阻塞到有结果；只能 get 一次
+    return 0;
+}
+</code></pre>
+<ul>
+<li><strong><code>std::launch::async</code></strong>：标准只要求在这种策略下，可调用对象<strong>如同在一个新的执行线程中异步执行</strong>，<strong>并未规定</strong>底层必须是独立的系统级线程还是由<strong>线程池</strong>承载。当前主流实现（GCC / Clang 常用运行库、MSVC 等）里，<strong>常见做法是直接新建 <code>std::thread</code></strong>。</li>
+<li><strong><code>std::launch::deferred</code></strong>：懒，拖到 <code>get()</code> 才在调用线程里跑。</li>
+<li><strong>默认策略</strong>实现说了算；你强依赖并行，就显式写 <code>async</code>。</li>
+</ul>
+<h3>packaged_task 和 promise</h3>
+<p>想把“任务”交给某条线去跑、再把结果塞回 <code>future</code>，就用这套。</p>
+<pre><code class="language-cpp">#include &lt;future&gt;
+#include &lt;thread&gt;
+
+int main() {
+    std::promise&lt;int&gt; p;
+    std::future&lt;int&gt; f = p.get_future();
+    std::thread t([&amp;p] {
+        p.set_value(7);
+    });
+    int v = f.get();
+    t.join();
+    return v;
+}
+</code></pre>
+<p>异常可以 <strong><code>set_exception</code></strong>，会在 <code>future::get()</code> 那边抛出来。</p>
+<hr />
+<h2>七、只跑一次：<code>std::call_once</code> 与静态局部变量</h2>
+<p>“整个程序里某段逻辑只执行一次”，常见两条路：<strong><code>call_once</code></strong> 管通用场景；<strong>函数内静态局部变量</strong>管“懒构造单份对象”，从 C++11 起也是线程安全的。</p>
+<h3><code>std::call_once</code></h3>
+<p>静态初始化、懒加载做一次初始化，常用 <strong><code>std::once_flag</code> + <code>std::call_once</code></strong>，比手写双重检查锁省心，也不容易写错。</p>
+<pre><code class="language-cpp">#include &lt;mutex&gt;
+
+std::once_flag flag;
+
+void init() {
+    std::call_once(flag, [] {
+        // 只执行一次
+    });
+}
+</code></pre>
+<h3>静态局部变量：C++11 起的“魔法静态”</h3>
+<p>从 <strong>C++11</strong> 起，<strong>块作用域</strong>里带初始化的 <strong><code>static</code> 局部变量</strong>，在<strong>第一次执行到该声明时</strong>才会初始化；标准保证<strong>初始化只发生一次</strong>，且多线程同时首次走到这里时<strong>不会数据竞争</strong>。这就是常说的 <strong>Meyers 单例</strong>写法，适合“全局只要一份、且希望用到再建”的对象。</p>
+<pre><code class="language-cpp">struct Registry {
+    Registry() { /* 注册表等一次性开销 */ }
+};
+
+Registry&amp; GetRegistry() {
+    static Registry reg;
+    return reg;
+}
+</code></pre>
+<p>和 <code>call_once</code> 怎么选：<strong>只要懒构造一个对象、并希望通过函数拿到引用</strong>，用 <code>static</code> 局部变量通常更短、更直观；<strong>要跑一段任意初始化逻辑、或和 <code>once_flag</code> 绑在类/模块里统一管理</strong>，用 <code>call_once</code> 更灵活。若构造函数里抛出异常，实现一般会<strong>允许之后再次尝试初始化</strong>（与“一次成功即固定”的 <code>call_once</code> 语义细节略有差别，具体以标准与文档为准）。</p>
+<hr />
+<h2>八、C++17 读写锁：<code>std::shared_mutex</code></h2>
+<p>多读一写：读用 <strong><code>std::shared_lock</code></strong>，写用 <strong><code>std::unique_lock</code></strong>。</p>
+<pre><code class="language-cpp">#include &lt;shared_mutex&gt;
+#include &lt;mutex&gt;
+
+std::shared_mutex rw;
+int value = 0;
+
+void read_side() {
+    std::shared_lock&lt;std::shared_mutex&gt; lk(rw);
+    (void)value;
+}
+
+void write_side(int v) {
+    std::unique_lock&lt;std::shared_mutex&gt; lk(rw);
+    value = v;
+}
+</code></pre>
+<p>读特别多、写很少的时候划算；否则一把普通 <code>std::mutex</code> 往往更简单。</p>
+<hr />
+<h2>九、C++20：<code>std::jthread</code> 和停止令牌</h2>
+<p><strong><code>std::jthread</code></strong> 析构时如果还能 join，会 <strong>自动 join</strong>，比裸 <code>std::thread</code> 少踩“写完忘了 join”的坑。可以配合 <strong><code>std::stop_token</code></strong> 做协作式取消：</p>
+<pre><code class="language-cpp">#include &lt;thread&gt;
+#include &lt;stop_token&gt;
+#include &lt;chrono&gt;
+
+void worker(std::stop_token st) {
+    while (!st.stop_requested()) {
+        // 工作一小步
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+}
+
+int main() {
+    std::jthread t(worker);
+    t.request_stop();
+    return 0;
+}
+</code></pre>
+<p>另外还有 <strong><code>std::barrier</code></strong>、<strong><code>std::latch</code></strong>、<strong><code>std::atomic::wait</code></strong> 等。</p>
+<hr />
+<h2>十、实践里容易翻车的点</h2>
+<p>下面这几条对照一下，能少掉很多坑。</p>
+<ol>
+<li><strong>析构顺序</strong>：线程里如果抓着引用或指针，必须保证指向的对象在线程结束前还活着；<code>detach</code> 尤其容易踩雷。</li>
+<li><strong>join 或 detach</strong>：<code>std::thread</code> 析构前必须二选一，否则直接 <strong><code>std::terminate</code></strong>。</li>
+<li><strong>锁的粒度</strong>：临界区越小越好；别扛着锁做 IO、长计算。</li>
+<li><strong>死锁</strong>：多把锁就固定顺序加，或者用 <code>std::scoped_lock</code> / <code>std::lock</code>；别随手嵌套乱序加锁。还要避免在持有锁时调用用户自定义回调、虚函数、未知逻辑，防止隐式嵌套锁导致死锁。</li>
+<li><strong>条件变量</strong>：<strong>永远用带谓词的 <code>wait</code></strong>。</li>
+<li><strong>原子还是互斥量</strong>：复杂不变量还是靠锁；原子适合简单标志、计数，或者你专门设计过的无锁结构。</li>
+<li><strong>数据竞争</strong>：C++ 里对同一个非原子对象并发读写、又没有同步，是 <strong>未定义行为</strong>；该上锁上锁，该原子原子。</li>
+</ol>
+<hr />
+<h2>十一、综合示例：生产者、消费者与工作线程</h2>
+<p>前面条件变量示例只给了函数片段，这里凑一个<strong>能直接编译运行</strong>的小程序：多个生产者往共享队列里塞任务，<strong>固定数量的工作线程</strong>循环取任务、在锁外“干活”，这就是最常见的<strong>线程池骨架</strong>（真实池子还会复用线程、配任务类型与拒绝策略等，这里只保留核心同步结构）。</p>
+<p>流程可以记三步：<strong>先 join 所有生产者</strong>，再在锁里置位 <strong><code>done</code></strong> 并 <strong><code>notify_all</code></strong>，最后 <strong>join 工人线程</strong>。工人用带谓词的 <code>wait</code>：有活就干，没活且已收尾就退出。</p>
+<pre><code class="language-cpp">#include &lt;chrono&gt;
+#include &lt;condition_variable&gt;
+#include &lt;iostream&gt;
+#include &lt;mutex&gt;
+#include &lt;queue&gt;
+#include &lt;thread&gt;
+#include &lt;vector&gt;
+
+std::mutex mtx;
+std::condition_variable cv;
+std::queue&lt;int&gt; task_queue;
+bool done = false;
+
+void producer(int id, int count) {
+    for (int i = 0; i &lt; count; ++i) {
+        int item = id * 1000 + i;
+        {
+            std::lock_guard&lt;std::mutex&gt; lk(mtx);
+            task_queue.push(item);
+        }
+        cv.notify_one();
+    }
+}
+
+void worker(int id) {
+    for (;;) {
+        int item = 0;
+        {
+            std::unique_lock&lt;std::mutex&gt; lk(mtx);
+            cv.wait(lk, [] { return !task_queue.empty() || done; });
+            if (task_queue.empty() &amp;&amp; done) {
+                break;
+            }
+            item = task_queue.front();
+            task_queue.pop();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::cout &lt;&lt; &quot;worker &quot; &lt;&lt; id &lt;&lt; &quot; processed &quot; &lt;&lt; item &lt;&lt; &quot;\n&quot;;
+    }
+}
+
+int main() {
+    const int producer_count = 2;
+    const int worker_count = 3;
+    const int per_producer = 4;
+
+    std::vector&lt;std::thread&gt; workers;
+    for (int w = 0; w &lt; worker_count; ++w) {
+        workers.emplace_back(worker, w);
+    }
+
+    std::vector&lt;std::thread&gt; producers;
+    for (int p = 0; p &lt; producer_count; ++p) {
+        producers.emplace_back(producer, p, per_producer);
+    }
+
+    for (auto&amp; t : producers) {
+        t.join();
+    }
+
+    {
+        std::lock_guard&lt;std::mutex&gt; lk(mtx);
+        done = true;
+    }
+    cv.notify_all();
+
+    for (auto&amp; t : workers) {
+        t.join();
+    }
+
+    return 0;
+}
+</code></pre>
+<p>编译运行示例：<code>g++ -std=c++17 -pthread main.cpp -o demo &amp;&amp; ./demo</code>（MSVC 下用对应选项链接线程支持即可。）</p>
+<hr />
+<h2>十二、小结：一张表对照需求</h2>
+<table>
+<thead>
+<tr>
+<th>需求</th>
+<th>常用标准库手段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>起线程、等结束</td>
+<td><code>std::thread</code> + <code>join</code>；C++20 能上就上 <code>std::jthread</code></td>
+</tr>
+<tr>
+<td>护住共享数据</td>
+<td><code>std::mutex</code> + <code>std::lock_guard</code> / <code>std::unique_lock</code> / <code>std::scoped_lock</code></td>
+</tr>
+<tr>
+<td>等条件成立</td>
+<td><code>std::condition_variable</code> + 带谓词的循环</td>
+</tr>
+<tr>
+<td>计数、标志、无锁底子</td>
+<td><code>std::atomic</code> + 合适的 <code>memory_order</code></td>
+</tr>
+<tr>
+<td>异步结果</td>
+<td><code>std::async</code>、<code>std::packaged_task</code>、<code>std::promise</code>/<code>std::future</code></td>
+</tr>
+<tr>
+<td>单次初始化</td>
+<td><code>std::call_once</code>；C++11 起函数内 <code>static</code> 局部变量（线程安全一次性初始化）</td>
+</tr>
+<tr>
+<td>多读单写</td>
+<td><code>std::shared_mutex</code> + <code>std::shared_lock</code> / <code>std::unique_lock</code></td>
+</tr>
+</tbody>
+</table>
+<p>把 <strong>RAII 锁</strong>、<strong>线程只能移动</strong>、<strong>原子内存序</strong> 这三块吃透，再按业务选 <code>async</code> 还是裸线程，大部分 C++ 并发代码就能写得又稳又好维护。</p>
+    </article>
+</body>
+</html>
