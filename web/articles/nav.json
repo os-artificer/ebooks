@@ -51,6 +51,10 @@
       "summaryClass": "nav-category--go",
       "items": [
         {
+          "href": "./page/golang/一种优雅的配置模式实践.html",
+          "text": "Go 一种优雅的配置模式实践"
+        },
+        {
           "href": "./page/golang/怎么实现chan的读写超时.html",
           "text": "Go 中怎么实现 chan 读写超时？"
         },
