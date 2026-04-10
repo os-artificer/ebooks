@@ -2,7 +2,7 @@
 """
 Render markdown slices to PNG images for 小红书-style vertical notes.
 Content is preserved verbatim per slice (line ranges from source file).
-Batch mode: drafts/cpp and drafts/golang → repo/xhs/<lang>/<article>/.
+Batch mode: drafts under cpp, golang, stl, linux, libc-gcc → repo/xhs/<分类>/<article>/.
 Also writes 00-cover.png (graphic poster: title, heading-derived keywords, optional one-line hook).
 """
 from __future__ import annotations
@@ -23,6 +23,18 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_XHS_ROOT = REPO_ROOT / "xhs"
 DRAFT_CPP = REPO_ROOT / "drafts" / "cpp"
 DRAFT_GOLANG = REPO_ROOT / "drafts" / "golang"
+DRAFT_STL = REPO_ROOT / "drafts" / "stl"
+DRAFT_LINUX = REPO_ROOT / "drafts" / "linux"
+DRAFT_LIBC_GCC = REPO_ROOT / "drafts" / "libc-gcc"
+
+# (drafts 子目录, xhs 输出子目录名)
+XHS_BATCH_CATEGORY_FOLDERS: tuple[tuple[Path, str], ...] = (
+    (DRAFT_CPP, "cpp"),
+    (DRAFT_GOLANG, "golang"),
+    (DRAFT_STL, "stl"),
+    (DRAFT_LINUX, "linux"),
+    (DRAFT_LIBC_GCC, "libc-gcc"),
+)
 
 # Offline-safe rendering: cache TTFs here; @font-face uses file:// absolute URLs (Playwright has no set_content base_url).
 XHS_FONT_CACHE = REPO_ROOT / "tools" / "fonts" / "xhs_cache"
@@ -665,15 +677,21 @@ def lang_label_for_path(md_path: Path) -> str:
                 return "C++"
             if parts[1] == "golang":
                 return "Go"
+            if parts[1] == "stl":
+                return "STL"
+            if parts[1] == "linux":
+                return "Linux"
+            if parts[1] == "libc-gcc":
+                return "libc / GCC"
     except ValueError:
         pass
     return "技术笔记"
 
 
 def collect_batch_sources() -> list[tuple[Path, str]]:
-    """Pairs of (md_path, lang_folder_name) for cpp and golang drafts."""
+    """Pairs of (md_path, output folder name) for known draft categories."""
     out: list[tuple[Path, str]] = []
-    for folder, name in ((DRAFT_CPP, "cpp"), (DRAFT_GOLANG, "golang")):
+    for folder, name in XHS_BATCH_CATEGORY_FOLDERS:
         if not folder.is_dir():
             continue
         for p in sorted(folder.glob("*.md")):
@@ -723,7 +741,7 @@ def main() -> None:
     parser.add_argument(
         "--batch",
         action="store_true",
-        help="Process all drafts/cpp and drafts/golang *.md into <out-root>/<lang>/<stem>/",
+        help="Process drafts/cpp|golang|stl|linux|libc-gcc *.md into <out-root>/<分类>/<stem>/",
     )
     parser.add_argument(
         "--no-cover",
@@ -754,7 +772,10 @@ def main() -> None:
     if args.batch:
         sources = collect_batch_sources()
         if not sources:
-            print("No .md files under drafts/cpp or drafts/golang.", file=sys.stderr)
+            print(
+                "No .md files under drafts/cpp, golang, stl, linux, or libc-gcc.",
+                file=sys.stderr,
+            )
             sys.exit(1)
         for md_path, lang_folder in sources:
             out_dir = article_out_dir(args.out_root, lang_folder, md_path)

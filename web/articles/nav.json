@@ -39,10 +39,6 @@
           "text": "C++ 线程池实现全方案：从中央队列到工作窃取"
         },
         {
-          "href": "./page/cpp/读懂stl_map.h：从红黑树到接口语义.html",
-          "text": "深入拆解 stl_map.h：GCC 的 std::map 到底怎么跑起来"
-        },
-        {
           "href": "./page/cpp/限制继承的方法有哪些.html",
           "text": "C++ 各版本\"限制继承\"都有哪些招？"
         }
@@ -67,6 +63,32 @@
           "text": "用 Go 实现父子双进程守护：从原理到落地"
         }
       ]
+    },
+    {
+      "key": "stl",
+      "title": "STL",
+      "open": false,
+      "summaryClass": "nav-category--stl",
+      "items": [
+        {
+          "href": "./page/stl/读懂stl_map.h：从红黑树到接口语义.html",
+          "text": "深入拆解 stl_map.h：GCC 的 std::map 到底怎么跑起来"
+        }
+      ]
+    },
+    {
+      "key": "linux",
+      "title": "Linux",
+      "open": false,
+      "summaryClass": "nav-category--linux",
+      "items": []
+    },
+    {
+      "key": "libc-gcc",
+      "title": "libc / GCC",
+      "open": false,
+      "summaryClass": "nav-category--libc-gcc",
+      "items": []
     },
     {
       "key": "tech-arch",

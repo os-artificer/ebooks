@@ -13,7 +13,9 @@ ROOT = Path(__file__).resolve().parent.parent
 DRAFTS = ROOT / "drafts"
 NAV_PATH = ROOT / "web" / "articles" / "nav.json"
 # 与 publish_all 中一致：仅这些分类参与导航同步
-NAV_SYNC_KEYS = frozenset({"cpp", "golang", "tech-arch"})
+NAV_SYNC_KEYS = frozenset(
+    {"cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch"}
+)
 
 
 def guess_title(md_text: str, fallback: str) -> str:
@@ -160,7 +162,7 @@ def copy_tech_arch_assets_if_needed(categories: set[str]) -> None:
 
 
 def publish_all() -> None:
-    categories = ["cpp", "golang", "tech-arch"]
+    categories = ["cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch"]
     for cat in categories:
         in_dir = DRAFTS / cat
         out_dir = ROOT / "web" / "page" / cat

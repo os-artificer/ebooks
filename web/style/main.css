@@ -230,6 +230,18 @@ body {
     background: #6b21a8;
 }
 
+.nav-category--stl {
+    background: #0891b2;
+}
+
+.nav-category--linux {
+    background: #b45309;
+}
+
+.nav-category--libc-gcc {
+    background: #c2410c;
+}
+
 .nav-group ul {
     list-style: none;
     margin: 0;
