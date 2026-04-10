@@ -81,7 +81,12 @@
       "title": "Linux",
       "open": false,
       "summaryClass": "nav-category--linux",
-      "items": []
+      "items": [
+        {
+          "href": "./page/linux/fork-deep-dive.html",
+          "text": "深入 Linux 内核：一次 fork() 调用，内核到底做了什么？"
+        }
+      ]
     },
     {
       "key": "libc-gcc",
