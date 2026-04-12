@@ -8,6 +8,7 @@ Also writes 00-cover.png (graphic poster: title, heading-derived keywords, optio
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import shutil
 import subprocess
@@ -20,6 +21,21 @@ import markdown
 from playwright.sync_api import sync_playwright
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _playwright_chromium_launch_kwargs() -> dict:
+    """Prefer explicit exe path; else use bundled full Chrome if headless_shell is missing."""
+    for key in ("PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH", "XHS_CHROME_EXECUTABLE"):
+        exe = os.environ.get(key)
+        if exe and Path(exe).is_file():
+            return {"headless": True, "executable_path": exe}
+    # Incomplete `playwright install` may leave chromium-* but not chromium_headless_shell-*
+    for chrome in sorted(
+        Path.home().glob(".cache/ms-playwright/chromium-*/chrome-linux64/chrome")
+    ):
+        if chrome.is_file():
+            return {"headless": True, "executable_path": str(chrome)}
+    return {"headless": True}
 DEFAULT_XHS_ROOT = REPO_ROOT / "xhs"
 DRAFT_CPP = REPO_ROOT / "drafts" / "cpp"
 DRAFT_GOLANG = REPO_ROOT / "drafts" / "golang"
@@ -542,7 +558,7 @@ def render_pngs(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        browser = p.chromium.launch(**_playwright_chromium_launch_kwargs())
         page = browser.new_page(viewport={"width": 1080, "height": 600})
         font_tag = xhs_local_font_faces_style()
 

@@ -85,6 +85,10 @@
         {
           "href": "./page/linux/fork-deep-dive.html",
           "text": "深入 Linux 内核：一次 fork() 调用，内核到底做了什么？"
+        },
+        {
+          "href": "./page/linux/qemu-gdb-kernel-wechat.html",
+          "text": "入门实践：在 x86_64 上使用 QEMU 与 GDB 配置Linux 内核调试环境"
         }
       ]
     },

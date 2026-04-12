@@ -1,0 +1,364 @@
+# 入门实践：在 x86_64 上使用 QEMU 与 GDB 配置Linux 内核调试环境
+
+> **作者：**岭南过客  
+> **更新时间：**2026-04-12  
+> **内核版本：**Linux v6.14  
+
+本文面向 **x86_64** 主机，以 **Ubuntu / Debian** 系发行版为例，说明如何依次完成：**获取内核源码**、**配置并编译带调试信息的内核**、**使用 QEMU 加载内核**、**通过 GDB 远程连接并设置断点**（以 **`start_kernel`** 为例）。
+
+**说明与约定：**
+
+1. 文中 **`/你的/内核源码路径`** 须替换为本地内核源码根目录的实际路径（例如 **`/home/username/linux`**）。下文 **`cd /你的/内核源码路径`** 表示在该目录下执行后续命令。
+2. 首次完整编译耗时可达数十分钟，属正常现象。
+3. 本文目标限于 **验证内核启动路径可被调试器截获**；若未配置磁盘根文件系统，启动后期可能出现错误信息或停滞，**但不妨碍**在早期入口练习断点与栈回溯。
+
+---
+
+## 一、安装依赖
+
+在终端执行：
+
+```bash
+sudo apt-get update
+sudo apt-get install -y build-essential bc bison flex libssl-dev libelf-dev \
+    qemu-system-x86 gdb git
+```
+
+确认可执行文件已在 **`PATH`** 中：
+
+```bash
+which qemu-system-x86_64
+which gdb
+```
+
+两条命令均有输出即可继续，输出如下（供参考）：
+
+```bash
+root@devhost:/data/workspace/opensource/linux# 
+which qemu-system-x86_64
+which gdb
+
+/usr/bin/qemu-system-x86_64
+/usr/bin/gdb
+```
+
+---
+
+## 二、获取 Linux 内核源码
+
+若本地已有与目标版本一致的内核树，可跳过本节，直接进入 **第三节**。
+
+以下任选一种方式；得到源码树后，其根目录即下文 **`/你的/内核源码路径`**。
+
+### 2.1 使用 Git 克隆（便于切换标签、增量更新）
+
+在**用于存放源码的父目录**下执行（示例检出 **`v6.14`** 标签，与文头内核版本一致；若需其他版本，将标签名改为对应 **`vX.Y`** 或 **`vX.Y.Z`**）：
+
+```bash
+cd /你的/父目录
+
+git clone https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git linux
+cd linux
+git checkout v6.14
+```
+
+若仅需浅克隆以节省时间与空间，可使用：
+
+```bash
+git clone --depth=1 --branch v6.14 \
+    https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git linux
+cd linux
+```
+
+亦可使用 **stable** 仓库（**`https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git`**），此时标签多为 **`v6.14.x`** 形式，请与所需修订号一致。
+
+### 2.2 使用官方发布 tarball
+
+在 **https://cdn.kernel.org/pub/linux/kernel/v6.x/** 下载与目标版本一致的 **`linux-6.14.x.tar.xz`**（**`x`** 为小版本号），解压：
+
+```bash
+tar -xf linux-6.14.x.tar.xz
+cd linux-6.14.x
+```
+
+解压后的目录即为内核源码根目录。
+
+### 2.3 空间与路径说明
+
+源码树与一次完整构建通常各需 **数 GB** 磁盘空间；若使用 **`ccache`** 或 **`O=`** 分离构建目录，请为对象目录预留额外空间。完成后请确认 **`/你的/内核源码路径`** 下可见 **`README`**、**`Makefile`** 等顶层文件。
+
+---
+
+## 三、编写调试用 Kconfig 片段与 GDB 调试信息说明
+
+在内核源码根目录创建文件 **`gdb-minimal.config`**，写入以下内容并保存：
+
+```text
+CONFIG_DEBUG_KERNEL=y
+CONFIG_DEBUG_INFO=y
+CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT=y
+CONFIG_GDB_SCRIPTS=y
+# CONFIG_DEBUG_INFO_REDUCED is not set
+```
+
+若 **`gdb-minimal.config`** 未放在源码根目录，**第四节** 中合并命令里 **`gdb-minimal.config`** 的路径须改为相对当前工作目录或绝对路径。
+
+
+### 3.1 与 GDB 相关的调试信息（为何需要上述选项）
+
+- **`vmlinux` 与 `bzImage`**：**`vmlinux`** 为链接器生成的 **ELF** 映像，通常带有 **DWARF** 调试信息，是 **GDB 加载符号、源码行号与类型的依据**。**`arch/x86/boot/bzImage`** 为供引导程序或 **QEMU `-kernel`** 使用的压缩启动映像；**远程调试时仍应让 GDB 打开与本次构建对应的 `./vmlinux`**，而不是 **`bzImage`**。
+- **`CONFIG_DEBUG_INFO`**：指示编译器生成调试信息；若配置为 **`CONFIG_DEBUG_INFO_NONE`**，则无法在 **`break` 函数名、查看变量与栈** 等场景下正常使用符号，故本实践须开启。
+- **`CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT`**：使用工具链默认的 **DWARF** 版本生成上述信息，与常见 **GCC**/**GDB** 组合兼容。
+- **`# CONFIG_DEBUG_INFO_REDUCED is not set`**：**`DEBUG_INFO_REDUCED`** 会削减类型等调试信息，不利于结构体成员、内核辅助脚本等对完整 **DWARF** 的依赖，故显式关闭。
+- **`CONFIG_GDB_SCRIPTS`**：启用后，执行 **`make scripts_gdb`**（以及部分配置下 **`make`** 依赖）会在构建树中安装 **`vmlinux-gdb.py`** 的链接；**GDB** 自动加载后可使用 **`lx-dmesg`**、**`lx-symbols`** 等内核提供的命令（可参考 **Documentation/process/debugging/gdb-kernel-debugging.rst**）。
+- **`CONFIG_FRAME_POINTER`（建议保持开启）**：官方调试文档建议在架构支持时保留帧指针，栈回溯更可靠；**`x86_64_defconfig`** 通常已包含，一般无需在片段里重复写。
+
+构建完成后，可用 **`file vmlinux`** 观察是否为 **`ELF`** 且包含 **`not stripped`** 或调试相关段（具体输出随工具链略有差异），以作辅助确认。
+
+---
+
+## 四、配置与编译
+
+在终端中进入内核源码根目录后执行：
+
+```bash
+cd /你的/内核源码路径
+
+make x86_64_defconfig
+./scripts/kconfig/merge_config.sh -m .config gdb-minimal.config
+make olddefconfig
+make -j$(nproc)
+make scripts_gdb
+```
+
+步骤说明：
+
+- **`make x86_64_defconfig`**：生成 x86_64 默认配置。
+- **`merge_config.sh`**：**第一个参数必须是当前基线 `.config`**，其后才是片段 **`gdb-minimal.config`**。脚本会把片段中的选项合并进 **`.config`**（与内核文档中 **`merge_config.sh .config …/某片段`** 的用法一致）。**不要**写成只带一个参数 **`gdb-minimal.config`**：那样会把片段误当作「基线配置」，再经脚本内部的 **`alldefconfig`** 流程处理，**不再等价于**「在 **`x86_64_defconfig`** 之上叠加调试选项」。
+- **`-m`**：只写回合并后的 **`.config`**，不额外调用 **`make`**；随后由 **`make olddefconfig`** 统一解析依赖。
+- **`make olddefconfig`**：解析新选项依赖并写回 **`.config`**。
+- **`make -j$(nproc)`**：执行内核构建。
+- **`make scripts_gdb`**：安装 GDB 辅助脚本链接；部分配置下 **`make`** 已包含该步骤，显式执行一次可保证产物完整。
+
+构建成功后，源码根目录应存在 **`vmlinux`** 与 **`arch/x86/boot/bzImage`**。若缺失，请根据构建日志中的报错信息排查。
+
+编译后的产物如下所示（供参考）：
+```bash
+root@devhost:/data/workspace/opensource/linux# ll vmlinux
+-rwxr-xr-x 1 root root 90409136 Apr 11 22:26 vmlinux*
+
+root@devhost:/data/workspace/opensource/linux# ll arch/x86/boot/bzImage
+-rw-r--r-- 1 root root 3421184 Apr 11 22:26 arch/x86/boot/bzImage
+```
+
+---
+
+## 五、启动 QEMU 并暴露 GDB 接口
+
+另开一终端，进入同一内核源码根目录，执行：
+
+```bash
+cd /你的/内核源码路径
+
+qemu-system-x86_64 \
+    -machine q35 \
+    -m 512M \
+    -smp 2 \
+    -kernel arch/x86/boot/bzImage \
+    -append "nokaslr console=ttyS0" \
+    -display none \
+    -monitor none \
+    -serial null \
+    -S -s -daemonize
+```
+
+主要参数含义：
+
+- **`-kernel arch/x86/boot/bzImage`**：指定引导映像。
+- **`append` 中的 `nokaslr`**：运行期关闭内核加载基址随机化，便于地址与符号一致对应。若改用**编译期**关闭，可配置 **`CONFIG_RANDOMIZE_BASE`** 为 **`n`**（与 **`nokaslr`** 二选一或并用，按习惯即可）；官方文档见 **Documentation/process/debugging/gdb-kernel-debugging.rst**。
+- **`-s`**：在 **TCP 1234** 上提供 GDB 远程调试桩。
+- **`-S`**：初始暂停 **vCPU**，直至 GDB 侧执行 **`continue`**。
+- **`-serial null`**：串口输出丢弃；配合 **`console=ttyS0`** 时**本机终端看不到**内核串口日志，仅适合「只靠断点验证」的极简场景。若要观察启动日志，可改为 **`-serial stdio`**（并视需要去掉 **`-daemonize`**，以免与前台串口冲突）。
+- **`-daemonize`**：以后台方式运行 QEMU，释放当前终端。
+
+运行效果如下（供参考）：
+
+```bash
+root@devhost:/data/workspace/opensource/linux# qemu-system-x86_64 \
+    -machine q35 \
+    -m 512M \
+    -smp 2 \
+    -kernel arch/x86/boot/bzImage \
+    -append "nokaslr console=ttyS0" \
+    -display none \
+    -monitor none \
+    -serial null \
+    -S -s -daemonize
+    
+root@devhost:/data/workspace/opensource/linux# ss -tlnp | grep 1234
+LISTEN 0      1            0.0.0.0:1234       0.0.0.0:*    users:(("qemu-system-x86",pid=349079,fd=3))
+LISTEN 0      1               [::]:1234          [::]:*    users:(("qemu-system-x86",pid=349079,fd=9))
+```
+
+若出现 **1234 端口已被占用**，可先结束遗留的 QEMU 进程，例如：
+
+```bash
+pkill -f 'qemu-system-x86_64.*arch/x86/boot/bzImage' || true
+```
+
+然后重新执行上述 **`qemu-system-x86_64`** 命令行。
+
+若启动参数中的 **`-kernel`** 改为 **`bzImage` 的绝对路径**，上述 **`pkill`** 正则可能匹配不到进程。此时可先执行 **`pgrep -a qemu-system-x86_64`** 查看命令行，再对对应 PID 使用 **`kill`**；请避免误结束本机其他 QEMU 虚拟机。
+
+**可选加速（需本机具备 KVM 且用户对 `/dev/kvm` 有访问权限）**：在 **`qemu-system-x86_64`** 之后、**`-machine q35`** 之前插入：
+
+```bash
+    -enable-kvm \
+    -cpu host \
+```
+
+若执行失败或环境不支持，请删去上述两行，使用默认 TCG 模拟。
+
+---
+
+## 六、GDB 连接与断点
+
+在用于调试的终端中进入内核源码根目录，执行：
+
+```bash
+cd /你的/内核源码路径
+
+gdb -iex "add-auto-load-safe-path $(pwd)" ./vmlinux
+```
+
+**说明**：内核官方文档 **Documentation/process/debugging/gdb-kernel-debugging.rst** 要求向 GDB 登记的是**构建目录**（源码内构建时即源码根目录 **`$(pwd)`**），而不是 **`vmlinux-gdb.py`** 单文件路径；`add-auto-load-safe-path` 的语义也是「允许从该目录加载自动加载脚本」。
+
+gdb 运行后的效果如下（供参考）：
+
+```bash
+root@devhost:/data/workspace/opensource/linux# gdb -iex "add-auto-load-safe-path $(pwd)" ./vmlinux
+GNU gdb (Ubuntu 15.1-1ubuntu1~24.04.1) 15.1
+Copyright (C) 2024 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.
+Type "show copying" and "show warranty" for details.
+This GDB was configured as "x86_64-linux-gnu".
+Type "show configuration" for configuration details.
+For bug reporting instructions, please see:
+<https://www.gnu.org/software/gdb/bugs/>.
+Find the GDB manual and other documentation resources online at:
+    <http://www.gnu.org/software/gdb/documentation/>.
+
+For help, type "help".
+Type "apropos word" to search for commands related to "word"...
+Reading symbols from ./vmlinux...
+(gdb)
+
+```
+
+出现 **`(gdb)`** 提示符后，依次输入：
+
+```text
+target remote localhost:1234
+break start_kernel
+continue
+```
+
+若配置与连接正确，执行流应在 **`start_kernel`** 处停止，并打印断点命中信息。此时可使用 **`bt`** 查看栈回溯，**`step`** 单步进入，**`continue`** 继续运行。退出时使用 **`quit`** 并确认。
+
+运行效果如下（供参考）：
+
+```bash
+(gdb) target remote localhost:1234
+Remote debugging using localhost:1234
+0x000000000000fff0 in ?? ()
+(gdb) break start_kernel
+Breakpoint 1 at 0xffffffff81aa2b20: file init/main.c, line 897.
+(gdb) continue
+Continuing.
+
+Thread 1 hit Breakpoint 1, start_kernel () at init/main.c:897
+897	{
+(gdb) bt
+#0  start_kernel () at init/main.c:897
+#1  0xffffffff81aac198 in x86_64_start_reservations (real_mode_data=real_mode_data@entry=0x13ab0 <error: Cannot access memory at address 0x13ab0>)
+    at arch/x86/kernel/head64.c:515
+#2  0xffffffff81aac2d3 in x86_64_start_kernel (real_mode_data=0x13ab0 <error: Cannot access memory at address 0x13ab0>)
+    at arch/x86/kernel/head64.c:496
+#3  0xffffffff8121e9bf in secondary_startup_64 () at arch/x86/kernel/head_64.S:420
+#4  0x0000000000000000 in ?? ()
+(gdb)
+```
+
+
+**说明**：**`-iex add-auto-load-safe-path`** 须在加载 **`vmlinux`** 时一并传入，以满足 GDB 对自动加载脚本的安全策略，避免 **`vmlinux-gdb.py`** 被拒绝执行；路径填**内核构建根目录**（与上文 **`$(pwd)`** 一致）。加载成功后，**第三节** 所述 **`lx-*`** 类命令方可在 **`(gdb)`** 内使用。
+
+**栈回溯中的 `Cannot access memory`**：早期启动栈里若出现 **`real_mode_data`** 等**实地址/引导阶段指针**，在 **`start_kernel`** 附近用 **`bt`** 可能提示无法访问，多为**预期现象**，不代表断点失败。
+
+---
+
+## 七、在其他符号处设置断点（示例：`fork.c`）
+
+在 **`(gdb)`** 中建议**优先**使用符号名（与版本无关、可读性更好）：
+
+```text
+break kernel_clone
+continue
+```
+
+**`kernel_clone`** 定义于 **`kernel/fork.c`**，一般为全局符号。仅当 **`break kernel_clone`** 无法解析时，再改用 **源文件:行号**（行号随版本变化，以下为 **v6.14** 参考；**以本机构建下 GDB 解析到的行号为准**）：
+
+```text
+break kernel/fork.c:2775
+```
+
+运行效果如下（供参考）：
+
+```bash
+(gdb) break kernel_clone
+Breakpoint 2 at 0xffffffff8125dd10: file kernel/fork.c, line 2775.
+(gdb) continue
+Continuing.
+
+Thread 1 hit Breakpoint 2, kernel_clone (args=args@entry=0xffffffff81803e58) at kernel/fork.c:2775
+2775	{
+(gdb) bt
+#0  kernel_clone (args=args@entry=0xffffffff81803e58) at kernel/fork.c:2775
+#1  0xffffffff8125e3ca in user_mode_thread (fn=fn@entry=0xffffffff815c27c0 <kernel_init>, arg=arg@entry=0x0, flags=flags@entry=512)
+    at kernel/fork.c:2893
+#2  0xffffffff815c2729 in rest_init () at init/main.c:708
+#3  0xffffffff81aa3081 in start_kernel () at init/main.c:1099
+#4  0xffffffff81aac198 in x86_64_start_reservations (real_mode_data=real_mode_data@entry=0x13ab0 <error: Cannot access memory at address 0x13ab0>)
+    at arch/x86/kernel/head64.c:515
+#5  0xffffffff81aac2d3 in x86_64_start_kernel (real_mode_data=0x13ab0 <error: Cannot access memory at address 0x13ab0>)
+    at arch/x86/kernel/head64.c:496
+#6  0xffffffff8121e9bf in secondary_startup_64 () at arch/x86/kernel/head_64.S:420
+#7  0x0000000000000000 in ?? ()
+(gdb)
+```
+
+在未提供用户态根文件系统的情况下，与进程创建相关的路径可能难以触发；**`start_kernel`** 处的断点更适合作为入门验证。在配置 **initrd** 或磁盘根文件系统后，上述断点命中概率会显著提高。
+
+若 **`vmlinux-gdb.py`** 已成功加载，可尝试（可选）：
+
+```text
+lx-dmesg
+```
+
+---
+
+## 八、常见问题
+
+| 现象 | 建议处理 |
+|------|----------|
+| 编译阶段缺少 **`gelf.h`** / **`libelf.h`** | 安装 **`libelf-dev`**，参见 **第一节** |
+| **`target remote` 失败** | 确认 QEMU 已启动；执行 **`ss -tlnp`**，在输出中查找 **`1234`** 端口是否处于监听状态 |
+| **`auto-load` 相关警告** | 使用 **第六节** 中的 **`gdb -iex "add-auto-load-safe-path $(pwd)" ./vmlinux`** 形式（路径为内核构建根目录） |
+| **`break` 无法解析符号** | 确认 **第三节**、**第四节** 中 **`gdb-minimal.config`** 已合并且构建成功；避免 **`CONFIG_DEBUG_INFO_NONE`** |
+
+---
+
+## 九、总结
+
+完成 **第六节** 中 **`start_kernel`** 断点验证后，即已建立 **QEMU + GDB** 的基本调试链路；后续可在该链路之上扩展根文件系统、驱动或子系统调试。
