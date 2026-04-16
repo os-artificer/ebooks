@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go 生产级 Panic 防护实战：从一个 safe 包看防御性编程的艺术</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">Go 生产级 Panic 防护实战：从一个 safe 包看防御性编程的艺术</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-04-16</p>
+</blockquote>
+<p>在 Go 语言的并发编程中，panic 是一颗随时可能引爆的"地雷"——一个未被 recover 的 goroutine panic 会直接导致整个进程崩溃。
+对于需要 7×24 小时运行的服务端程序而言，这种行为是灾难性的。</p>
+<p>很多团队的做法是在每个 goroutine 入口处写一段 <code>defer recover()</code> 的模板代码，但这种"复制-粘贴"式的防护往往既不统一，也不完备——日志格式五花八门、调用栈信息缺失、敏感数据泄漏到日志，甚至 recover 逻辑本身也可能 panic。</p>
+<p>本文将以 <code>safe</code> 包为蓝本（文末附录有源码），深入解析如何设计一套统一、可扩展、自身 panic-safe 的防护框架。</p>
+<p>文章涵盖设计动机、API 架构、四层防护链原理、Functional Options 模式落地，以及工程最佳实践。</p>
+<h2>一、问题背景：为什么需要统一的 Panic 防护？</h2>
+<h3>1.1 Go Panic 的致命特性</h3>
+<p>Go 的 panic/recover 机制有两个关键特性需要牢记：</p>
+<ul>
+<li><strong>goroutine 隔离性</strong>：<code>recover()</code> 只能捕获当前 goroutine 的 panic，主 goroutine 无法 recover 子 goroutine 的 panic。</li>
+<li><strong>进程级杀伤力</strong>：任何一个 goroutine 中未被 recover 的 panic 都会导致整个进程退出。</li>
+</ul>
+<pre><code>                      +-----------+
+                      |   main    |
+                      | goroutine |
+                      +-----+-----+
+                            |
+                  +---------+---------+
+                  |                   |
+            +-----+-----+      +-----+-----+
+            | goroutine A|      | goroutine B|
+            |  (safe.Go) |      |   (bare)   |
+            +-----+------+      +-----+------+
+                  |                    |
+             panic -&gt; recover     panic -&gt; ???
+             (进程存活)            (进程崩溃)
+</code></pre>
+<h3>1.2 "复制粘贴式" Recover 的痛点</h3>
+<p>实际项目中，团队最常见的做法如下：</p>
+<pre><code class="language-go">go func() {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf(&quot;panic: %v&quot;, r)
+        }
+    }()
+    doWork()
+}()
+</code></pre>
+<p>这段代码虽然能工作，但在大型项目中会暴露出多重问题：</p>
+<table>
+<thead>
+<tr>
+<th>痛点</th>
+<th>具体表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>日志不统一</td>
+<td>有的用 <code>log.Printf</code>，有的用 <code>logger.Error</code>，格式各异</td>
+</tr>
+<tr>
+<td>调用栈缺失</td>
+<td>很多地方只记录了 panic 值，没有 <code>debug.Stack()</code></td>
+</tr>
+<tr>
+<td>敏感信息泄漏</td>
+<td>panic 值可能包含 token、密码等敏感信息直接写入日志</td>
+</tr>
+<tr>
+<td>缺乏回调机制</td>
+<td>无法统一触发告警、上报指标</td>
+</tr>
+<tr>
+<td>recover 本身不安全</td>
+<td>logger 或回调函数自身 panic 会导致防护链断裂</td>
+</tr>
+<tr>
+<td>语义不清晰</td>
+<td>同步场景能否 re-panic？异步场景是否允许？缺乏约束</td>
+</tr>
+</tbody>
+</table>
+<h2>二、API 全景：五个入口函数覆盖全场景</h2>
+<p><code>safe</code> 包将日常开发中的 panic 防护需求抽象为同步执行和异步执行两大类，共五个核心函数：</p>
+<pre><code>+-- 同步 --+                     +---- 异步 ----+
+|          |                     |              |
+|   Run    |                     |   Go         |  fire-and-forget
+|          |                     |   GoWait     |  + 等待完成
++----------+                     |   GoCtx      |  + 上下文传递
+                                 |   GoCtxWait  |  + 上下文 + 等待
+                                 +--------------+
+</code></pre>
+<h3>2.1 同步执行：Run</h3>
+<pre><code class="language-go">safe.Run(func() {
+    riskyWork()
+}, safe.WithLabel(&quot;data-import&quot;))
+</code></pre>
+<p><code>Run</code> 在当前 goroutine 中执行目标函数。如果发生 panic，会进行 recover、记录日志、触发回调，然后正常返回——除非显式开启了 <code>WithRepanic</code>。</p>
+<p>适用场景：HTTP Handler、RPC Handler 中需要"兜底"但不想开新 goroutine 的情况。</p>
+<h3>2.2 异步执行家族：Go / GoWait / GoCtx / GoCtxWait</h3>
+<pre><code class="language-go">// fire-and-forget
+safe.Go(func() { backgroundSync() })
+
+// 需要等待完成
+wait := safe.GoWait(func() { batchProcess() })
+wait() // 阻塞直到完成
+
+// 携带 context，用于回调中判断取消状态
+safe.GoCtx(ctx, func() { streamProcess() },
+    safe.WithOnPanic(func(pi safe.PanicInfo) {
+        if pi.Ctx.Err() != nil {
+            return // context 已取消，无需告警
+        }
+        alerting.Send(pi)
+    }),
+)
+</code></pre>
+<p>四个异步函数的关系可以用一张矩阵表示：</p>
+<pre><code>                  fire-and-forget     可等待(wait)
+                 +------------------+------------------+
+  无 context     |      Go          |     GoWait       |
+                 +------------------+------------------+
+  有 context     |      GoCtx       |     GoCtxWait    |
+                 +------------------+------------------+
+</code></pre>
+<blockquote>
+<p>设计决策：<code>GoCtx</code> 的 ctx 仅传入 <code>PanicInfo.Ctx</code> 供回调使用，不会自动取消 fn 的执行。这遵循了 Go 社区"显式优于隐式"的惯例——取消逻辑应由 fn 内部通过 <code>ctx.Done()</code> 自行处理。</p>
+</blockquote>
+<h3>2.3 Defer 风格的 Recover 辅助函数</h3>
+<p>除了"包装执行"模式，<code>safe</code> 包还提供了一组 <code>defer</code> 风格的轻量辅助函数，适用于无法使用 <code>Run/Go</code> 包装的场景：</p>
+<table>
+<thead>
+<tr>
+<th>函数</th>
+<th>用途</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RecoverToError(&amp;err)</code></td>
+<td>panic 转 error，保留调用栈</td>
+<td>需要返回 error 的函数</td>
+</tr>
+<tr>
+<td><code>RecoverWithHandler(fn)</code></td>
+<td>panic 时调用自定义 handler</td>
+<td>需要自定义处理但不想用完整 Option</td>
+</tr>
+<tr>
+<td><code>RecoverNoop()</code></td>
+<td>静默吞掉 panic</td>
+<td>明确知道 panic 可忽略的清理逻辑</td>
+</tr>
+<tr>
+<td><code>RecoverAndStackHandler(fn)</code></td>
+<td>回调接收 <code>(msg, stack)</code></td>
+<td>需要分离 panic 值和堆栈</td>
+</tr>
+<tr>
+<td><code>RecoverWithDebugStackHandler(fn)</code></td>
+<td>同上，使用 <code>debug.Stack()</code></td>
+<td>需要完整的 debug 堆栈信息</td>
+</tr>
+</tbody>
+</table>
+<pre><code class="language-go">func ProcessItem(item Item) (err error) {
+    defer safe.RecoverToError(&amp;err)
+    // 如果这里 panic，err 会被设置为包含调用栈的 error
+    return transform(item)
+}
+</code></pre>
+<h2>三、Functional Options 模式：灵活且向后兼容的配置体系</h2>
+<p><code>safe</code> 包使用经典的 Functional Options 模式来配置行为，这是 Go 社区广泛认可的 API 设计模式。</p>
+<h3>3.1 Option 定义</h3>
+<pre><code class="language-go">type Option func(*config)
+
+type config struct {
+    label         string
+    log           Logger
+    onPanic       func(PanicInfo)
+    repanic       bool
+    stackMaxBytes int
+    sanitizer     PanicSanitizer
+}
+</code></pre>
+<h3>3.2 六个配置项</h3>
+<pre><code>+---------------------+--------------------------------------------+
+|      Option         |              作用                          |
++---------------------+--------------------------------------------+
+| WithLabel(s)        | 为日志附加标签，便于定位问题来源          |
+| WithLogger(l)       | 自定义 logger，未设置时使用标准库 log     |
+| WithOnPanic(fn)     | panic 后的回调：指标上报、告警、资源清理   |
+| WithRepanic(bool)   | 同步模式下 re-panic；异步模式自动忽略      |
+| WithStackMaxBytes(n)| 限制堆栈长度，防止日志系统被撑爆           |
+| WithPanicSanitizer  | 脱敏处理，防止 token/密码泄漏到日志        |
++---------------------+--------------------------------------------+
+</code></pre>
+<h3>3.3 设计亮点</h3>
+<p><strong>nil 安全</strong>：<code>newConfig</code> 在遍历 Options 时会跳过 nil，这意味着调用方可以安全地传入条件 Option：</p>
+<pre><code class="language-go">safe.Run(fn,
+    safe.WithLabel(&quot;task&quot;),
+    optionalOption, // 可能为 nil，不会 panic
+)
+</code></pre>
+<p><strong>后者覆盖前者</strong>：同名 Option 多次传入时，后传入的值生效，符合直觉的"最后写入胜出"语义。</p>
+<h2>四、四层防护链：核心架构深度剖析</h2>
+<p><code>safe</code> 包最精妙的设计在于其四层防护链——不仅保护业务代码的 panic，还保护防护机制自身不会因为扩展点的 bug 而失效。</p>
+<h3>4.1 Panic 处理全流程</h3>
+<pre><code>   业务函数 fn 发生 panic
+          |
+          v
+   +------+-------+
+   |    guard()    |  第 0 层：捕获业务 panic
+   |  defer recover|
+   +------+--------+
+          |
+          v
+   +------+-----------+
+   | handlePanic()    |  核心处理流程
+   |                  |
+   |  1. debug.Stack  |  获取原始堆栈
+   |  2. copyStack    |  第 1 次截断
+   |  3. sanitizer    |  脱敏处理（如果配置了）
+   |  4. copyStack    |  第 2 次截断（脱敏后可能变长）
+   |  5. safeLog      |  安全记录日志
+   |  6. safeOnPanic  |  安全触发回调
+   |  7. maybeRepanic |  是否重新 panic
+   +------------------+
+</code></pre>
+<h3>4.2 四层防护的 safe 包装</h3>
+<p>这里是整个框架最核心的设计理念：每一个可能失败的扩展点都被独立的 recover 包裹。</p>
+<pre><code>+---------------------------------------------------+
+|              handlePanic (主流程)                 |
+|                                                   |
+|  +------------------+                             |
+|  | safeSanitize()   |  &lt;-- 脱敏函数自身 panic?    |
+|  | defer recover    |      回退到原始reason/stack |
+|  +------------------+                             |
+|           |                                       |
+|           v                                       |
+|  +------------------+                             |
+|  | safeLog()        |  &lt;-- logger 自身 panic?     |
+|  | defer recover    |      降级到 log.Printf      |
+|  +------------------+                             |
+|           |                                       |
+|           v                                       |
+|  +------------------+                             |
+|  | safeOnPanic()    |  &lt;-- 回调函数自身 panic?    |
+|  | defer recover    |      记录日志但不传播        |
+|  +------------------+                             |
+|           |                                       |
+|           v                                       |
+|  +------------------+                             |
+|  | safeWarn()       |  &lt;-- 警告日志自身 panic?    |
+|  | defer recover    |      降级到 log.Printf      |
+|  +------------------+                             |
++---------------------------------------------------+
+</code></pre>
+<p>来看 <code>safeLog</code> 的实现，感受这种"层层兜底"的防御思路：</p>
+<pre><code class="language-go">func safeLog(cfg *config, label, stackStr string, reason any) {
+    defer func() {
+        if r := recover(); r != nil {
+            // 自定义 logger 炸了？降级到标准库
+            log.Printf(
+                &quot;[safe] panic in logger itself, label: %s, logPanic: %v, &quot;+
+                &quot;originalReason: %v, stack: %s&quot;,
+                label, r, reason, stackStr,
+            )
+        }
+    }()
+    logPanic(cfg, label, stackStr, reason)
+}
+</code></pre>
+<p><code>safeOnPanic</code> 同理：</p>
+<pre><code class="language-go">func safeOnPanic(cfg *config, label string, pi PanicInfo) {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf(
+                &quot;[safe] panic in OnPanic callback, label: %s, &quot;+
+                &quot;callbackPanic: %v, originalReason: %v, stack: %s&quot;,
+                label, r, pi.Reason, string(pi.Stack),
+            )
+        }
+    }()
+    cfg.onPanic(pi)
+}
+</code></pre>
+<p>降级到标准库 <code>log</code> 是最后的保底手段——标准库 <code>log.Printf</code> 几乎不可能 panic，即使自定义 logger 完全不可用，关键信息也不会丢失。</p>
+<h3>4.3 脱敏器的双重截断机制</h3>
+<p><code>PanicSanitizer</code> 可能将一个短 stack 替换为一个很长的"安全"stack，导致突破 <code>WithStackMaxBytes</code> 限制。<code>safe</code> 包通过双重截断解决这个问题：</p>
+<pre><code> 原始 debug.Stack()
+       |
+       v
+  copyStack (第 1 次截断，按 stackMaxBytes)
+       |
+       v
+  sanitizer (可能产生更长的 stack)
+       |
+       v
+  copyStack (第 2 次截断，再次按 stackMaxBytes)
+       |
+       v
+  最终的 finalStack (保证不超限)
+</code></pre>
+<p>对应代码逻辑：</p>
+<pre><code class="language-go">if cfg.sanitizer != nil {
+    finalReason, finalStack = safeSanitize(cfg.sanitizer, reason, stack, label)
+    var reTruncated bool
+    finalStack, reTruncated = copyStack(finalStack, cfg.stackMaxBytes)
+    if reTruncated {
+        truncated = true
+    }
+}
+</code></pre>
+<h2>五、同步 vs 异步：WithRepanic 的精确语义控制</h2>
+<p><code>WithRepanic</code> 的设计体现了对 Go 并发模型的深刻理解：</p>
+<pre><code>+--------------------+-------------------+-------------------+
+|                    |    同步 (Run)      |  异步 (Go/GoWait) |
++--------------------+-------------------+-------------------+
+| WithRepanic(false) | recover + 返回     | recover + 返回    |
+| WithRepanic(true)  | recover + re-panic | recover + 警告    |
++--------------------+-------------------+-------------------+
+</code></pre>
+<p>为什么异步模式要忽略 re-panic？</p>
+<p>在同步模式下，调用者可以在外层用 <code>recover()</code> 捕获 re-panic，实现"记录日志后继续向上传播"的语义。但在异步模式下，re-panic 会导致整个进程崩溃——这恰恰是 <code>safe</code> 包要防止的事情。</p>
+<p>因此异步模式下 re-panic 请求会被忽略，并通过 <code>safeWarn</code> 输出警告日志，提醒开发者检查配置。</p>
+<p>re-panic 使用原始值：即使配置了 <code>PanicSanitizer</code>，re-panic 抛出的也是原始、未脱敏的 panic 值。这确保了上游 <code>recover()</code> 能够拿到真实 panic 值进行精确错误处理。</p>
+<h2>六、堆栈截断：copyStack 的实现细节</h2>
+<p>堆栈截断看似简单，实际上有几个值得注意的工程细节：</p>
+<pre><code class="language-go">func copyStack(full []byte, max int) ([]byte, bool) {
+    if max &lt;= 0 || len(full) &lt;= max {
+        return cloneBytes(full), false
+    }
+
+    out := cloneBytes(full[:max])
+    if max &gt; len(shortTruncationSuffix) {
+        copy(out[max-len(shortTruncationSuffix):], shortTruncationSuffix)
+    }
+    return out, true
+}
+</code></pre>
+<p>三个设计决策：</p>
+<ol>
+<li><strong>深拷贝</strong>：使用 <code>cloneBytes</code> 而非直接切片引用，避免持有 <code>debug.Stack()</code> 返回的大数组引用，防止内存滞留。</li>
+<li><strong>截断标记</strong>：在截断末尾附加 <code>...</code>，让日志阅读者明确知道堆栈被截断。</li>
+<li><strong>极端短 max 的处理</strong>：当 <code>max &lt;= len("...")</code> 时不附加截断标记，避免覆盖掉有限的有效信息。</li>
+</ol>
+<h2>七、生产实战：在通用后台服务中的应用</h2>
+<p>在典型的微服务、任务调度器或插件化后台系统中，可以用 <code>safe.Go</code> 包裹所有后台组件启动点：</p>
+<pre><code class="language-go">// 核心后台任务
+safe.Go(func() {
+    defer runWg.Done()
+    if err := worker.Run(ctx); err != nil &amp;&amp; ctx.Err() == nil {
+        logger.Warnf(&quot;worker exited: %v&quot;, err)
+    }
+})
+
+// 插件或子任务
+for _, plugin := range plugins {
+    runWg.Add(1)
+    plugin := plugin
+    safe.Go(func() {
+        defer runWg.Done()
+        plugin.Run(ctx)
+    })
+}
+</code></pre>
+<p>这种模式带来几个显著优势：</p>
+<ol>
+<li><strong>进程稳定性</strong>：任何一个插件或任务 panic 都不会拖垮整个服务。</li>
+<li><strong>问题可追踪</strong>：统一日志格式更易接入日志平台和告警系统。</li>
+<li><strong>代码简洁</strong>：业务代码无需重复 recover 模板，只需用 <code>safe.Go</code> 替代 <code>go</code>。</li>
+</ol>
+<h2>八、最佳实践总结</h2>
+<p>从 <code>safe</code> 包的设计与使用中，可以提炼出以下工程实践：</p>
+<h3>实践一：永远不要让 goroutine "裸奔"</h3>
+<p>规则：项目中所有 <code>go func()</code> 都应通过 <code>safe.Go</code> 或等价安全包装器启动。</p>
+<p>可以通过 linter（例如自定义 <code>go vet</code> 检查或 <code>golangci-lint</code> 插件）在 CI 中强制执行。</p>
+<h3>实践二：防护代码本身也需要防护</h3>
+<p>四层 <code>defer recover</code> 揭示了一个深层原则：任何扩展点都可能失败。如果 recover 逻辑依赖了 logger、metrics client、HTTP client，这些依赖本身也可能 panic。</p>
+<pre><code>设计原则：防护层的每一个外部调用都必须有独立 recover 保护。
+降级策略：标准库 log 是最后防线。
+</code></pre>
+<h3>实践三：区分同步和异步的 re-panic 语义</h3>
+<p>同步场景下 re-panic 是合理的——调用方可以 recover 并继续做决策。但异步 goroutine 中 re-panic 等于自杀，必须在框架层面禁止。</p>
+<h3>实践四：日志脱敏是框架责任，不是业务责任</h3>
+<p>通过 <code>WithPanicSanitizer</code>，脱敏逻辑可以提升到框架层：</p>
+<pre><code class="language-go">safe.Go(handler,
+    safe.WithPanicSanitizer(func(reason any, stack []byte) (any, []byte) {
+        s := fmt.Sprint(reason)
+        s = tokenRegex.ReplaceAllString(s, &quot;[REDACTED]&quot;)
+        return s, stack
+    }),
+)
+</code></pre>
+<p>业务代码无需在每个 recover 里重复脱敏逻辑，也不会因遗漏导致敏感信息泄漏。</p>
+<h3>实践五：堆栈长度必须有上限</h3>
+<p>生产环境中，一个深递归 panic 可能产生数十 KB 堆栈。如果直接写入日志系统，可能触发：</p>
+<ul>
+<li>日志采集组件消息大小限制</li>
+<li>Kafka/ES 等存储层单条消息限制</li>
+<li>日志查看工具渲染卡顿</li>
+</ul>
+<p><code>WithStackMaxBytes</code> 可在框架层统一解决，建议设置为 4KB 到 16KB。</p>
+<h3>实践六：深拷贝堆栈数据</h3>
+<p><code>debug.Stack()</code> 返回的 <code>[]byte</code> 可能指向较大底层数组。如果直接长期持有切片引用，会阻止 GC 回收整块底层数组。<code>safe</code> 包通过 <code>cloneBytes</code> 深拷贝避免这一陷阱。</p>
+<h3>实践七：用 Functional Options 保持 API 演进能力</h3>
+<p>Option 模式使新增配置项不需要修改已有调用代码。未来若新增 <code>WithRetry(n)</code> 或 <code>WithTimeout(d)</code>，只需增加 Option 函数和 <code>config</code> 字段，现有调用方零改动。</p>
+<h2>九、与社区方案的对比</h2>
+<table>
+<thead>
+<tr>
+<th>特性</th>
+<th>手动 defer/recover</th>
+<th>safe 包</th>
+<th>社区 errgroup</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>统一日志格式</td>
+<td>✗</td>
+<td>✓</td>
+<td>✗</td>
+</tr>
+<tr>
+<td>堆栈信息</td>
+<td>手动获取</td>
+<td>自动捕获 + 截断</td>
+<td>✗</td>
+</tr>
+<tr>
+<td>敏感信息脱敏</td>
+<td>✗</td>
+<td>✓ (sanitizer)</td>
+<td>✗</td>
+</tr>
+<tr>
+<td>panic 回调</td>
+<td>✗</td>
+<td>✓ (OnPanic)</td>
+<td>✗</td>
+</tr>
+<tr>
+<td>防护链自身安全</td>
+<td>✗</td>
+<td>✓ (四层保护)</td>
+<td>✗</td>
+</tr>
+<tr>
+<td>同步/异步语义</td>
+<td>无区分</td>
+<td>精确区分</td>
+<td>仅异步</td>
+</tr>
+<tr>
+<td>re-panic 控制</td>
+<td>手动</td>
+<td>框架管控</td>
+<td>✗</td>
+</tr>
+<tr>
+<td>等待完成</td>
+<td>手动 WaitGroup</td>
+<td>GoWait 内置</td>
+<td>✓</td>
+</tr>
+<tr>
+<td>context 传递</td>
+<td>手动</td>
+<td>GoCtx 内置</td>
+<td>✓</td>
+</tr>
+</tbody>
+</table>
+<p><code>errgroup</code> 专注于"一组 goroutine 的错误收集与取消"，<code>safe</code> 包专注于"panic 防护与可观测性"。两者解决的是不同层面问题，在实际项目中可以互补使用。</p>
+<h2>十、总结</h2>
+<p><code>safe</code> 包的设计理念可以浓缩为一句话：让 panic 防护成为基础设施，而非散落在业务代码中的临时补丁。</p>
+<p>它通过以下设计实现这一目标：</p>
+<ol>
+<li>统一入口：<code>Run/Go/GoWait/GoCtx/GoCtxWait</code> 覆盖同步、异步、等待、上下文传递组合。</li>
+<li>Functional Options：灵活配置、向后兼容、零侵入。</li>
+<li>四层防护链：sanitizer -&gt; logger -&gt; callback -&gt; warn，每一层都有独立 recover。</li>
+<li>精确语义控制：同步 re-panic vs 异步忽略，原始值 re-panic vs 脱敏值日志。</li>
+<li>工程化细节：深拷贝堆栈、双重截断、nil Option 安全、标准库降级。</li>
+</ol>
+<p>这些设计决策背后的共同原则是：在分布式系统中，任何组件都可能以意想不到的方式失败，而基础设施代码的职责就是确保失败不会级联扩散。</p>
+<h2>十一、附录：safe 包完整源码</h2>
+<p>本节给出自包含的完整实现。<code>Logger</code> 接口在包内定义，未注入自定义 logger 时统一降级到标准库 <code>log.Printf</code>。</p>
+<h3>11.1 常量、类型与入口 API</h3>
+<pre><code class="language-go">package safe
+
+import (
+    &quot;context&quot;
+    &quot;fmt&quot;
+    &quot;log&quot;
+    &quot;runtime&quot;
+    &quot;runtime/debug&quot;
+    &quot;sync&quot;
+    &quot;time&quot;
+)
+
+const shortTruncationSuffix = &quot;...&quot;
+
+type Logger interface {
+    Debugf(format string, args ...any)
+    Infof(format string, args ...any)
+    Warnf(format string, args ...any)
+    Errorf(format string, args ...any)
+    Fatalf(format string, args ...any)
+}
+
+type execMode uint8
+
+const (
+    execModeSync execMode = iota
+    execModeAsync
+)
+
+type PanicSanitizer func(reason any, stack []byte) (safeReason any, safeStack []byte)
+
+type PanicInfo struct {
+    Ctx         context.Context
+    Reason      any
+    Stack       []byte
+    Truncated   bool
+    RecoveredAt time.Time
+}
+
+func Run(fn func(), opts ...Option) {
+    cfg := newConfig(opts)
+    guard(&amp;cfg, nil, false, execModeSync, fn)
+}
+
+func Go(fn func(), opts ...Option) {
+    cfg := newConfig(opts)
+    go func() {
+        guard(&amp;cfg, nil, false, execModeAsync, fn)
+    }()
+}
+
+func GoWait(fn func(), opts ...Option) func() {
+    cfg := newConfig(opts)
+    var wg sync.WaitGroup
+    wg.Go(func() {
+        guard(&amp;cfg, nil, false, execModeAsync, fn)
+    })
+    return wg.Wait
+}
+
+func GoCtx(ctx context.Context, fn func(), opts ...Option) {
+    if ctx == nil {
+        ctx = context.Background()
+    }
+    cfg := newConfig(opts)
+    captured := ctx
+    go func() {
+        guard(&amp;cfg, captured, true, execModeAsync, fn)
+    }()
+}
+
+func GoCtxWait(ctx context.Context, fn func(), opts ...Option) func() {
+    if ctx == nil {
+        ctx = context.Background()
+    }
+    cfg := newConfig(opts)
+    captured := ctx
+    var wg sync.WaitGroup
+    wg.Go(func() {
+        guard(&amp;cfg, captured, true, execModeAsync, fn)
+    })
+    return wg.Wait
+}
+
+func FormatPanicInfo(pi PanicInfo) string {
+    return fmt.Sprintf(
+        &quot;reason: %v, truncated: %t, recoveredAt: %s, stack: %s&quot;,
+        pi.Reason,
+        pi.Truncated,
+        pi.RecoveredAt.Format(time.RFC3339),
+        string(pi.Stack),
+    )
+}
+</code></pre>
+<h3>11.2 Functional Options</h3>
+<pre><code class="language-go">type Option func(*config)
+
+type config struct {
+    label         string
+    log           Logger
+    onPanic       func(PanicInfo)
+    repanic       bool
+    stackMaxBytes int
+    sanitizer     PanicSanitizer
+}
+
+func newConfig(opts []Option) config {
+    c := config{}
+    for _, o := range opts {
+        if o != nil {
+            o(&amp;c)
+        }
+    }
+    return c
+}
+
+func WithLabel(label string) Option {
+    return func(c *config) { c.label = label }
+}
+
+func WithLogger(log Logger) Option {
+    return func(c *config) { c.log = log }
+}
+
+func WithOnPanic(h func(PanicInfo)) Option {
+    return func(c *config) { c.onPanic = h }
+}
+
+func WithPanicSanitizer(s PanicSanitizer) Option {
+    return func(c *config) { c.sanitizer = s }
+}
+
+func WithRepanic(repanic bool) Option {
+    return func(c *config) { c.repanic = repanic }
+}
+
+func WithStackMaxBytes(n int) Option {
+    return func(c *config) {
+        if n &lt; 0 {
+            n = 0
+        }
+        c.stackMaxBytes = n
+    }
+}
+</code></pre>
+<h3>11.3 核心 Panic 处理链</h3>
+<pre><code class="language-go">func guard(cfg *config, opCtx context.Context, ctxForPanic bool, mode execMode, fn func()) {
+    defer func() {
+        if r := recover(); r != nil {
+            handlePanic(cfg, opCtx, ctxForPanic, mode, r)
+        }
+    }()
+    fn()
+}
+
+func handlePanic(cfg *config, opCtx context.Context, ctxForPanic bool, mode execMode, reason any) {
+    full := debug.Stack()
+    stack, truncated := copyStack(full, cfg.stackMaxBytes)
+    label := cfg.label
+
+    if label == &quot;&quot; {
+        label = &quot;-&quot;
+    }
+
+    recoveredAt := time.Now()
+    finalReason := reason
+    finalStack := stack
+
+    if cfg.sanitizer != nil {
+        finalReason, finalStack = safeSanitize(cfg.sanitizer, reason, stack, label)
+        var reTruncated bool
+        finalStack, reTruncated = copyStack(finalStack, cfg.stackMaxBytes)
+        if reTruncated {
+            truncated = true
+        }
+    }
+
+    stackStr := string(finalStack)
+    safeLog(cfg, label, stackStr, finalReason)
+
+    pi := PanicInfo{
+        Reason:      finalReason,
+        Stack:       finalStack,
+        Truncated:   truncated,
+        RecoveredAt: recoveredAt,
+    }
+
+    if ctxForPanic {
+        pi.Ctx = opCtx
+    }
+
+    if cfg.onPanic != nil {
+        safeOnPanic(cfg, label, pi)
+    }
+
+    maybeRepanic(cfg, label, mode, reason)
+}
+
+func maybeRepanic(cfg *config, label string, mode execMode, reason any) {
+    if !cfg.repanic {
+        return
+    }
+    if mode == execModeAsync {
+        safeWarn(cfg, &quot;WithRepanic is ignored in async mode, label: %s&quot;, label)
+        return
+    }
+    panic(reason)
+}
+</code></pre>
+<h3>11.4 四层安全包装</h3>
+<pre><code class="language-go">func safeLog(cfg *config, label, stackStr string, reason any) {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf(
+                &quot;[safe] panic in logger itself, label: %s, logPanic: %v, originalReason: %v, stack: %s&quot;,
+                label, r, reason, stackStr,
+            )
+        }
+    }()
+    logPanic(cfg, label, stackStr, reason)
+}
+
+func logPanic(cfg *config, label, stackStr string, reason any) {
+    if cfg.log != nil {
+        cfg.log.Errorf(&quot;panic recovered, label: %s, reason: %v, stack: %s&quot;, label, reason, stackStr)
+    } else {
+        log.Printf(&quot;[safe] panic recovered, label: %s, reason: %v, stack: %s&quot;, label, reason, stackStr)
+    }
+}
+
+func safeOnPanic(cfg *config, label string, pi PanicInfo) {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf(
+                &quot;[safe] panic in OnPanic callback, label: %s, callbackPanic: %v, originalReason: %v, stack: %s&quot;,
+                label, r, pi.Reason, string(pi.Stack),
+            )
+        }
+    }()
+    cfg.onPanic(pi)
+}
+
+func safeWarn(cfg *config, format string, args ...any) {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf(&quot;[safe] logger panic while writing warning: &quot;+format, args...)
+        }
+    }()
+    if cfg.log != nil {
+        cfg.log.Warnf(format, args...)
+        return
+    }
+    log.Printf(&quot;[safe] warning: &quot;+format, args...)
+}
+
+func safeSanitize(
+    s PanicSanitizer,
+    reason any,
+    stack []byte,
+    label string,
+) (safeReason any, safeStack []byte) {
+    safeReason = reason
+    safeStack = stack
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf(
+                &quot;[safe] panic in PanicSanitizer, label: %s, sanitizerPanic: %v&quot;,
+                label, r,
+            )
+            safeReason = reason
+            safeStack = stack
+        }
+    }()
+    return s(reason, stack)
+}
+</code></pre>
+<h3>11.5 堆栈工具函数</h3>
+<pre><code class="language-go">func copyStack(full []byte, max int) ([]byte, bool) {
+    if max &lt;= 0 || len(full) &lt;= max {
+        return cloneBytes(full), false
+    }
+    out := cloneBytes(full[:max])
+    if max &gt; len(shortTruncationSuffix) {
+        copy(out[max-len(shortTruncationSuffix):], shortTruncationSuffix)
+    }
+    return out, true
+}
+
+func cloneBytes(src []byte) []byte {
+    out := make([]byte, len(src))
+    copy(out, src)
+    return out
+}
+</code></pre>
+<h3>11.6 defer 辅助函数</h3>
+<pre><code class="language-go">func RecoverToError(err *error) {
+    if r := recover(); r != nil {
+        const size = 64 &lt;&lt; 10
+        stack := make([]byte, size)
+        stack = stack[:runtime.Stack(stack, false)]
+        *err = fmt.Errorf(&quot;recovered from panic: panic=%v (original err=%v)\nstack:\n%s&quot;, r, *err, string(stack))
+    }
+}
+
+func RecoverWithHandler(handler func(any)) func() {
+    return func() {
+        if r := recover(); r != nil {
+            if handler != nil {
+                safeCallHandler(handler, r)
+                return
+            }
+            const size = 64 &lt;&lt; 10
+            buf := make([]byte, size)
+            buf = buf[:runtime.Stack(buf, false)]
+            log.Printf(&quot;[safe] panic recovered, label: -, reason: %v, stack: %s&quot;, r, string(buf))
+        }
+    }
+}
+
+func safeCallHandler(handler func(any), panicValue any) {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf(&quot;[safe] panic in RecoverWithHandler callback: callback=%v, original=%v&quot;, r, panicValue)
+        }
+    }()
+    handler(panicValue)
+}
+
+func RecoverNoop() {
+    _ = recover()
+}
+
+func RecoverAndStackHandler(handler func(panicMsg, stackTrace string)) func() {
+    return func() {
+        if r := recover(); r != nil {
+            const size = 64 &lt;&lt; 10
+            buf := make([]byte, size)
+            buf = buf[:runtime.Stack(buf, false)]
+            if handler != nil {
+                handler(fmt.Sprint(r), string(buf))
+            }
+        }
+    }
+}
+
+func RecoverWithDebugStackHandler(handler func(panicMsg, fullStack string)) func() {
+    return func() {
+        if r := recover(); r != nil {
+            if handler != nil {
+                handler(fmt.Sprint(r), string(debug.Stack()))
+            }
+        }
+    }
+}
+</code></pre>
+    </article>
+</body>
+</html>
