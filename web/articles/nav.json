@@ -7,10 +7,6 @@
       "summaryClass": "nav-category--cpp",
       "items": [
         {
-          "href": "./page/cpp/glibc-memory-workings.html",
-          "text": "glibc memory 机制解析：`memcpy`、`memmove`、`memset` 与 `malloc`"
-        },
-        {
           "href": "./page/cpp/函数重载覆盖与隐藏.html",
           "text": "C++ 函数：重载、覆盖、隐藏"
         },
@@ -105,7 +101,12 @@
       "title": "libc / GCC",
       "open": false,
       "summaryClass": "nav-category--libc-gcc",
-      "items": []
+      "items": [
+        {
+          "href": "./page/libc-gcc/glibc-memory-workings.html",
+          "text": "glibc malloc / free 机制解析：一次分配从用户代码走到内核的全程"
+        }
+      ]
     },
     {
       "key": "tech-arch",

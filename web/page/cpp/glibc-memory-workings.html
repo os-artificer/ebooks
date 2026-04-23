@@ -1,0 +1,958 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>glibc malloc / free 机制解析：一次分配从用户代码走到内核的全程</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">glibc malloc / free 机制解析：一次分配从用户代码走到内核的全程</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-04-21<br />
+<strong>源码版本：</strong>glibc 2.43</p>
+</blockquote>
+<p>一行 <code>malloc</code>、一行 <code>free</code>，背后其实干了很多事：先查线程本地缓存，没有再去抢 arena 锁，还不够就找内核要；<code>free</code> 时要合并相邻空闲块，条件合适才还给内核。RSS 只涨不降、尾延迟抖动、偶发崩溃，很多时候根就在这里。</p>
+<blockquote>
+<p><strong>尾延迟抖动</strong>：尾延迟（tail latency）指响应时间分布里最慢的那部分请求，通常用 P99、P999 衡量。"抖动"是指这个延迟不稳定、时高时低。合在一起的意思是：大多数请求都很快，但偶尔会有少量请求突然变慢，且无规律。在 <code>malloc/free</code> 场景里，常见原因是 tcache 未命中后需要竞争 arena 锁、偶发的 <code>brk</code>/<code>mmap</code> 系统调用、以及触发内存归还时的 TLB 刷新。</p>
+</blockquote>
+<p>本文基于 glibc 2.43 的源码，从最浅的"一次 malloc 到底调了哪些东西"开始，逐层往下，一直讲到"内存不足时分配器怎么退路"。</p>
+<p>开始正文前先说一个背景：<strong>glibc 2.43 彻底移除了 fastbin</strong>，原来 fastbin 承担的"小块快速回收"完全交给 tcache，而 tcache 自身也新增了 12 个"大块桶"，覆盖上限<strong>最高可配置到约 4 MiB</strong>——但<strong>默认上限仍是 1032 字节</strong>（用户请求），大块桶需要通过 <code>GLIBC_TUNABLES=glibc.malloc.tcache_max=...</code> 手动调大后才会生效。本文将按最新的实现来讲。</p>
+<hr />
+<h2>一、先看一眼全景：一次 malloc / free 到底发生了什么</h2>
+<p>站在业务视角，<code>malloc(n)</code> 只有两种结果：要么拿到一块可写的内存，要么返回 <code>NULL</code>、把 <code>errno</code> 设为 <code>ENOMEM</code>。</p>
+<p>但往下看一层，调用路径其实是一个<strong>三层漏斗</strong>：</p>
+<pre><code>malloc(n)
+  └─ __libc_malloc                   ← 入口：尝试线程本地 tcache 命中
+       │
+       ├─ 命中 ─→ 返回（完全不碰 arena 锁）
+       │
+       └─ 未命中 ─→ __libc_malloc2   ← 进入带锁路径，选一个 arena
+                    └─ _int_malloc    ← 在 bin、top chunk 里找一块合适的
+                          │
+                          └─ 都没有 ─→ sysmalloc ← 向内核要地：mmap 或 brk
+</code></pre>
+<p><code>free(p)</code> 的路径是对称的：</p>
+<pre><code>free(p)
+  └─ __libc_free                     ← 入口：对齐 + 双释放检查
+       │
+       ├─ 小块 / 中块 ─→ 放回 tcache（O(1)）
+       │
+       └─ 其余 ─→ _int_free_chunk
+                  ├─ 与前后相邻空闲块合并
+                  ├─ 归位到某个 bin
+                  └─ 若合并出的块够大，trim 回内核
+</code></pre>
+<p>这张图里已经出现了几个核心概念：<strong>tcache</strong>（线程本地缓存）、<strong>arena</strong>（多线程共用的堆管理单元）、<strong>bin</strong>（按尺寸分层的空闲链表）、<strong>chunk</strong>（分配器的最小记账单元）、<strong>top chunk</strong>（arena 末尾的未分配块），下面一层一层拆开看。</p>
+<hr />
+<h2>二、chunk：一切故事的起点</h2>
+<p>分配器不是按字节管理内存的，它是按"块"来管理的，每一个块都是一个独立的 <code>malloc_chunk</code>：</p>
+<pre><code class="language-c">struct malloc_chunk {
+    INTERNAL_SIZE_T      mchunk_prev_size;  /* 前一 chunk 的 size，仅当前驱空闲时有效 */
+    INTERNAL_SIZE_T      mchunk_size;       /* 本 chunk 大小，低 3 位做标志 */
+
+    struct malloc_chunk* fd;                /* 空闲链表前向指针 */
+    struct malloc_chunk* bk;                /* 空闲链表后向指针 */
+
+    struct malloc_chunk* fd_nextsize;       /* largebin：按 size 降序的“跳表” */
+    struct malloc_chunk* bk_nextsize;
+};
+</code></pre>
+<p><code>mchunk_size</code> 的低 3 位分别表示：</p>
+<ul>
+<li><code>PREV_INUSE (0x1)</code>：前驱 chunk 是否在用；</li>
+<li><code>IS_MMAPPED (0x2)</code>：是否来自独立 <code>mmap</code>；</li>
+<li><code>NON_MAIN_ARENA (0x4)</code>：是否属于非主 arena。</li>
+</ul>
+<p>返回给用户的指针不是 chunk 头，而是跳过 <code>prev_size + size</code> 这两个字段之后的位置：</p>
+<pre><code class="language-c">#define CHUNK_HDR_SZ   (2 * SIZE_SZ)
+#define chunk2mem(p)   ((void *) ((char *) (p) + CHUNK_HDR_SZ))
+#define mem2chunk(mem) ((mchunkptr) ((char *) (mem) - CHUNK_HDR_SZ))
+</code></pre>
+<p>这里有个关键设计：<strong>chunk 在"空闲"和"在用"两种状态下，用的是同一片内存</strong>。</p>
+<p>空闲时，<code>fd</code> / <code>bk</code> / <code>fd_nextsize</code> / <code>bk_nextsize</code> 是链表指针；一旦被分配出去，这段空间就交给用户写业务数据。</p>
+<p>另外，本 chunk 的"尾部大小"字段，是放在<strong>下一个 chunk 的 <code>mchunk_prev_size</code></strong> 里的——这就是为什么合并算法要同时读下一个 chunk 的头。</p>
+<p>这个"头部复用 + 尾部外移"的技巧，把每个 chunk 的元数据压到了 <code>2 * SIZE_SZ</code>（64 位系统就是 16 字节）。代价也很明确：<strong>一旦越界写把相邻 chunk 的头碰坏，链表会立刻失去一致性</strong>——后文会看到分配器怎么通过廉价校验把这种损坏截在第一时间。</p>
+<p><code>checked_request2size</code> 负责把用户请求转成 chunk 尺寸：</p>
+<pre><code class="language-c">#define request2size(req)                                      \
+    (((req) + SIZE_SZ + MALLOC_ALIGN_MASK &lt; MINSIZE) ?         \
+     MINSIZE :                                                 \
+     ((req) + SIZE_SZ + MALLOC_ALIGN_MASK) &amp; ~MALLOC_ALIGN_MASK)
+</code></pre>
+<p>做三件事：<strong>溢出检查</strong>、<strong>按 <code>MALLOC_ALIGNMENT</code>（64 位下是 16 字节）对齐</strong>、<strong>下限为 <code>MINSIZE</code></strong>。
+这意味着 <code>malloc(1)</code> 和 <code>malloc(8)</code> 可能拿到同样大的 chunk。</p>
+<hr />
+<h2>三、内存对齐：每次分配背后的尺寸修整</h2>
+<h3>1. 对齐粒度从哪里来</h3>
+<p>glibc 的对齐粒度由 <code>MALLOC_ALIGNMENT</code> 决定，定义在 <code>sysdeps/generic/malloc-alignment.h</code>：</p>
+<pre><code class="language-c">/* 取 2*SIZE_SZ 与 long double 对齐要求的较大值 */
+#define MALLOC_ALIGNMENT \
+    (2 * SIZE_SZ &lt; __alignof__(long double) \
+     ? __alignof__(long double) : 2 * SIZE_SZ)
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>平台</th>
+<th><code>SIZE_SZ</code></th>
+<th><code>__alignof__(long double)</code></th>
+<th><code>MALLOC_ALIGNMENT</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>x86-64</td>
+<td>8 字节</td>
+<td>16 字节</td>
+<td><strong>16 字节</strong></td>
+</tr>
+<tr>
+<td>i386</td>
+<td>4 字节</td>
+<td>16 字节（x87 扩展精度）</td>
+<td><strong>16 字节</strong>（硬编码）</td>
+</tr>
+<tr>
+<td>32 位通用</td>
+<td>4 字节</td>
+<td>8 字节</td>
+<td><strong>8 字节</strong></td>
+</tr>
+</tbody>
+</table>
+<p>x86-64 下 <code>MALLOC_ALIGNMENT = 16</code>，这与 System V ABI 要求 SSE/AVX 操作数按 16 字节对齐的规定一致。</p>
+<h3>2. 用户请求如何变成 chunk 尺寸</h3>
+<p><code>request2size</code> 在 chunk 头（<code>SIZE_SZ = 8</code> 字节）的基础上，把总尺寸向上对齐到 <code>MALLOC_ALIGNMENT</code>，同时保证不小于 <code>MINSIZE</code>：</p>
+<pre><code>chunk 尺寸 = max(MINSIZE, round_up(req + SIZE_SZ, MALLOC_ALIGNMENT))
+</code></pre>
+<p>x86-64 具体数字（<code>MINSIZE = 32</code>，<code>MALLOC_ALIGNMENT = 16</code>）：</p>
+<table>
+<thead>
+<tr>
+<th><code>malloc(n)</code></th>
+<th>chunk 尺寸</th>
+<th>用户可用</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>malloc(0)</code></td>
+<td>32 字节</td>
+<td>24 字节</td>
+<td>下限 MINSIZE</td>
+</tr>
+<tr>
+<td><code>malloc(1)</code></td>
+<td>32 字节</td>
+<td>24 字节</td>
+<td>下限 MINSIZE</td>
+</tr>
+<tr>
+<td><code>malloc(8)</code></td>
+<td>32 字节</td>
+<td>24 字节</td>
+<td>下限 MINSIZE</td>
+</tr>
+<tr>
+<td><code>malloc(16)</code></td>
+<td>32 字节</td>
+<td>24 字节</td>
+<td>(16+8+15)&amp;~15 = 32</td>
+</tr>
+<tr>
+<td><code>malloc(24)</code></td>
+<td>32 字节</td>
+<td>24 字节</td>
+<td>(24+8+15)&amp;~15 = 32</td>
+</tr>
+<tr>
+<td><code>malloc(25)</code></td>
+<td>48 字节</td>
+<td>40 字节</td>
+<td>(25+8+15)&amp;~15 = 48</td>
+</tr>
+<tr>
+<td><code>malloc(64)</code></td>
+<td>80 字节</td>
+<td>72 字节</td>
+<td>(64+8+15)&amp;~15 = 80</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p><code>malloc_usable_size(p)</code> 返回的是"用户可用字节数"，即 chunk 尺寸减去头部，通常比申请值大。这片多出来的空间可以合法使用，但不建议依赖（bin 的分级让实际分到的 chunk 往往比请求大一档）。</p>
+</blockquote>
+<h3>3. 对齐与 bin 粒度的关系</h3>
+<p><code>MALLOC_ALIGNMENT</code> 同时决定了 smallbin 的步长：</p>
+<pre><code class="language-c">#define SMALLBIN_WIDTH    MALLOC_ALIGNMENT   /* 每个 smallbin 对应的 size 范围宽度 */
+</code></pre>
+<p>所以 x86-64 上 smallbin 按 16 字节一档划分，共 64 档，覆盖 32 ~ 1008 字节。</p>
+<p>tcache 同理：</p>
+<pre><code class="language-c">#define tidx2usize(idx) (((size_t)idx) * MALLOC_ALIGNMENT + MINSIZE - SIZE_SZ)
+</code></pre>
+<p>这意味着 tcache 桶 0 对应用户请求 0~24 字节，桶 1 对应 25~40 字节，以此类推——对齐粒度直接影响缓存命中率，请求大小越"整"，命中同一个桶的概率越高。</p>
+<h3>4. 超对齐分配：memalign / aligned_alloc / posix_memalign</h3>
+<p>当需要比 16 字节更严格的对齐（例如 AVX-512 需要 64 字节、DMA 缓冲区需要页对齐）时，可用以下三个 API：</p>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>标准</th>
+<th>对 alignment 的要求</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>memalign(align, size)</code></td>
+<td>POSIX（已过时）</td>
+<td>2 的幂次</td>
+</tr>
+<tr>
+<td><code>aligned_alloc(align, size)</code></td>
+<td>C17</td>
+<td>2 的幂次且非零；<code>size</code> 须是 <code>align</code> 的倍数</td>
+</tr>
+<tr>
+<td><code>posix_memalign(&amp;p, align, size)</code></td>
+<td>POSIX.1-2001</td>
+<td>2 的幂次且 ≥ <code>sizeof(void*)</code></td>
+</tr>
+</tbody>
+</table>
+<p>三者最终都经由 <code>_mid_memalign</code> → <code>_int_memalign</code> 完成分配。</p>
+<p><code>_int_memalign</code> 的策略是：</p>
+<ol>
+<li>若 <code>alignment &lt;= MALLOC_ALIGNMENT</code>，直接退化为普通 <code>malloc</code>；</li>
+<li>否则，过量申请 <code>nb + alignment + MINSIZE</code> 字节，确保对齐点一定落在所分 chunk 内；</li>
+<li>找到第一个满足对齐的地址 <code>newp</code>，把前面多出的"头部填充"切成独立 chunk 释放回 bin；</li>
+<li>把尾部多余部分同样切分释放。</li>
+</ol>
+<pre><code class="language-c">/* _int_memalign 核心片段（malloc.c:4684）*/
+void *m = _int_malloc(av, nb + alignment + MINSIZE);   // 过量申请
+p = mem2chunk(m);
+
+if (!PTR_IS_ALIGNED(m, alignment)) {
+    newp = mem2chunk(ALIGN_UP((uintptr_t)m + MINSIZE, alignment));
+    size_t leadsize = PTR_DIFF(newp, p);
+    set_head(newp, (size - leadsize) | PREV_INUSE | arena_flag);
+    set_head_size(p, leadsize | arena_flag);
+    _int_free_merge_chunk(av, p, leadsize);   // 前缀填充还给 bin
+    p = newp;
+}
+</code></pre>
+<p><strong>注意</strong>：超对齐分配的头部填充会被立刻释放，但这些零散小块往往难以被后续分配复用，长期调用会加速内存碎片化。对于性能敏感路径，应尽量把需要超对齐的对象统一到一个内存池，而不是频繁调用 <code>aligned_alloc</code>。</p>
+<hr />
+<h2>四、分配路径：从 tcache 到 sysmalloc，三层漏斗</h2>
+<p>glibc 2.43 的 <code>__libc_malloc</code> 入口写得很克制，主逻辑只有两条 tcache 分支：</p>
+<pre><code class="language-c">void *
+__libc_malloc (size_t bytes)
+{
+#if USE_TCACHE
+    size_t nb = checked_request2size (bytes);
+
+    if (nb &lt; mp_.tcache_max_bytes)
+    {
+        size_t tc_idx = csize2tidx (nb);
+
+        if (__glibc_likely (tc_idx &lt; TCACHE_SMALL_BINS))
+        {
+            if (tcache-&gt;entries[tc_idx] != NULL)
+                return tag_new_usable (tcache_get (tc_idx));
+        }
+        else
+        {
+            tc_idx = large_csize2tidx (nb);
+            void *victim = tcache_get_large (tc_idx, nb);
+            if (victim != NULL)
+                return tag_new_usable (victim);
+        }
+    }
+#endif
+    return __libc_malloc2 (bytes);
+}
+</code></pre>
+<p>这就是那个"三层漏斗"的第一层入口。</p>
+<h3>1. 第一层 tcache：线程本地的快路径</h3>
+<p>每个线程都有一份独立的 <code>tcache_perthread_struct</code>，结构非常紧凑：</p>
+<pre><code class="language-c">#define TCACHE_SMALL_BINS    64
+#define TCACHE_LARGE_BINS    12      /* 可扩展覆盖到约 4 MiB，但默认不启用 */
+#define TCACHE_MAX_BINS      (TCACHE_SMALL_BINS + TCACHE_LARGE_BINS)
+#define TCACHE_FILL_COUNT    16
+
+typedef struct tcache_perthread_struct
+{
+    uint16_t       num_slots[TCACHE_MAX_BINS];
+    tcache_entry  *entries  [TCACHE_MAX_BINS];
+} tcache_perthread_struct;
+</code></pre>
+<ul>
+<li><strong>small tcache（64 个桶）</strong>：每个桶存一种固定尺寸，步长 <code>MALLOC_ALIGNMENT = 16</code>。命中就是一次单链表弹出，O(1)。覆盖 chunk 尺寸 32 ~ 1040 字节，对应<strong>用户请求 0 ~ 1032 字节</strong>。</li>
+<li><strong>large tcache（12 个桶，2.43 新增）</strong>：使用 <code>__builtin_clz</code> 做 log₂ 映射，每档覆盖约一倍大小区间，共 12 档，理论上限约 4 MiB。<strong>默认不启用</strong>——<code>mp_.tcache_max_bytes</code> 初始值为 <code>MAX_TCACHE_SMALL_SIZE + 1 = 1041</code>，只有通过 <code>GLIBC_TUNABLES=glibc.malloc.tcache_max=...</code> 把上限调大后，large bins 才会被实际使用。</li>
+<li>每个桶默认缓存上限是 16 个 chunk（<code>TCACHE_FILL_COUNT</code>），可通过 <code>glibc.malloc.tcache_count</code> 调整（源码上限 <code>UINT16_MAX</code>）。</li>
+</ul>
+<p>tcache 命中率越高，分配器就越"轻"——因为<strong>这条路径完全不碰 arena 锁</strong>，不会因为别的线程在分配而等待，因此 ptmalloc 的工程目标之一，就是尽可能把请求挡在这一层。</p>
+<p>tcache 用单链表，存指针需要保护：</p>
+<pre><code class="language-c">#define PROTECT_PTR(pos, ptr) \
+    ((__typeof (ptr)) ((((size_t) pos) &gt;&gt; 12) ^ ((size_t) ptr)))
+#define REVEAL_PTR(ptr)  PROTECT_PTR (&amp;ptr, ptr)
+</code></pre>
+<p>这就是 <strong>Safe-Linking</strong>。
+它用"链表节点自身地址 <code>&gt;&gt; 12</code>"和 <code>next</code> 做 XOR，混淆出一个加密后的指针，读取时再异或一次恢复。
+<code>&gt;&gt; 12</code> 是为了丢掉页内偏移，让剩下的高位对应 ASLR 带来的随机基址——攻击者想通过越界写把 <code>next</code> 指向任意地址，必须先泄露 ASLR 的 <code>mmap_base</code>。</p>
+<p>tcache 每个 chunk 还带一个 <code>key</code> 字段，回收时写 <code>e-&gt;key = tcache_key</code>（进程级高熵随机数），下次 free 到来时 O(1) 判定是不是重复释放：</p>
+<pre><code class="language-c">if (__glibc_unlikely (e-&gt;key == tcache_key))
+    return tcache_double_free_verify (e);
+</code></pre>
+<h3>2. 第二层 _int_malloc：ptmalloc 的决策中心</h3>
+<p>tcache miss 之后走 <code>__libc_malloc2</code>，它的工作就两件：<strong>挑一个 arena、拿着锁调 <code>_int_malloc</code></strong>，失败了还能换一个 arena 再试一次。</p>
+<pre><code class="language-c">static void * __attribute_noinline__
+__libc_malloc2 (size_t bytes)
+{
+    mstate ar_ptr;
+    void *victim;
+
+    if (SINGLE_THREAD_P) {
+        /* 单线程进程完全跳过锁，走 main_arena */
+        return tag_new_usable (_int_malloc (&amp;main_arena, bytes));
+    }
+
+    arena_get (ar_ptr, bytes);                    /* 选一个 arena 并加锁 */
+    victim = _int_malloc (ar_ptr, bytes);
+
+    if (!victim &amp;&amp; ar_ptr != NULL) {
+        /* 本 arena 要不出来，换一个再试 */
+        ar_ptr = arena_get_retry (ar_ptr, bytes);
+        victim = _int_malloc (ar_ptr, bytes);
+    }
+
+    if (ar_ptr != NULL)
+        __libc_lock_unlock (ar_ptr-&gt;mutex);
+
+    return tag_new_usable (victim);
+}
+</code></pre>
+<p><code>_int_malloc</code> 是整个分配器里最核心的决策函数，顺序搜索这么几级。</p>
+<p><strong>(1) smallbin 精确匹配</strong> 如果请求落在 smallbin 范围（64 位下约 32～1008 字节），直接查对应桶。</p>
+<pre><code class="language-c">if (in_smallbin_range (nb)) {
+    idx = smallbin_index (nb);
+    bin = bin_at (av, idx);
+    if ((victim = last (bin)) != bin) {
+        bck = victim-&gt;bk;
+        if (__glibc_unlikely (bck-&gt;fd != victim))
+            malloc_printerr (&quot;malloc(): smallbin double linked list corrupted&quot;);
+        ...
+        /* 顺手把同尺寸剩余 chunk 塞进 tcache，摊薄下次的锁开销 */
+        while (tcache-&gt;num_slots[tc_idx] != 0
+               &amp;&amp; (tc_victim = last (bin)) != bin) {
+            ...
+            tcache_put (tc_victim, tc_idx);
+        }
+        return chunk2mem (victim);
+    }
+}
+</code></pre>
+<p>注意那段"顺手填充 tcache"——<strong>既然已经拿到锁，就多搬几个到线程本地</strong>，下次再来同尺寸请求就能在第一层命中，这是 ptmalloc 对小对象吞吐优化的关键工程细节。</p>
+<p><strong>(2) unsorted bin 扫描</strong> unsorted bin 是整个分配器里唯一的"缓冲池"——最近 free 的 chunk、largebin 切剩的 remainder，都先落到这里。</p>
+<p><code>_int_malloc</code> 会在一个 <code>MAX_ITERS = 10000</code> 的循环里遍历它，做四件事：</p>
+<ul>
+<li>校验大小、校验双向链表一致性（<code>bck-&gt;fd != victim</code> 就 abort）；</li>
+<li>如果是小请求且 unsorted 只剩 <code>last_remainder</code>，用它切分以提升局部性；</li>
+<li>如果 chunk 尺寸精确匹配，直接用（小块会先填满 tcache 再返回）；</li>
+<li>否则把 chunk 正式归位到 smallbin 或 largebin，<strong>largebin 归位时还要维护 <code>fd_nextsize</code> 跳表</strong>。</li>
+</ul>
+<p><code>MAX_ITERS</code> 这个上限的作用是：防止某次 malloc 被一条恶意构造的超长 unsorted 链卡住。</p>
+<p><strong>(3) largebin best-fit</strong> 大请求走 largebin 的跳表搜索。</p>
+<pre><code class="language-c">victim = victim-&gt;bk_nextsize;
+while (((unsigned long) (size = chunksize (victim)) &lt; (unsigned long) nb))
+    victim = victim-&gt;bk_nextsize;
+</code></pre>
+<p>命中后若剩余 <code>&gt;= MINSIZE</code>，就切一块出来、把 remainder 塞回 unsorted bin——这是 unsorted bin 的<strong>另一个入口</strong>。</p>
+<p><strong>(4) binmap 扫描</strong> 如果对应桶是空的，走位图扫描找到下一个非空桶，切出合适大小。</p>
+<p><strong>(5) top chunk 切分</strong> 到这一步了，说明所有 bin 都没合适的，只能从 arena 末尾的 top chunk 切一刀。top 不够大？进最后一层漏斗。</p>
+<h3>3. 第三层 sysmalloc：向内核要地</h3>
+<p><code>sysmalloc</code> 是最后的出口，它有两条主要路径：<strong>mmap</strong> 和 <strong>brk 扩堆</strong>，路径选择由请求大小决定。</p>
+<pre><code class="language-c">if (av == NULL
+    || ((unsigned long) nb &gt;= (unsigned long) mp_.mmap_threshold
+        &amp;&amp; mp_.n_mmaps &lt; mp_.n_mmaps_max))
+{
+    char *mm;
+    if (mp_.hp_pagesize &gt; 0 &amp;&amp; nb &gt;= mp_.hp_pagesize) {
+        /* 透明大页路径：直接 mmap 大页，避免后续 madvise */
+        mm = sysmalloc_mmap (nb, mp_.hp_pagesize, mp_.hp_flags);
+        if (mm != MAP_FAILED) return mm;
+    }
+    mm = sysmalloc_mmap (nb, pagesize, 0);
+    if (mm != MAP_FAILED) return mm;
+    tried_mmap = true;
+}
+</code></pre>
+<p><strong>大于等于 <code>mmap_threshold</code>（默认 128 KiB，动态上调到最多 32 MiB）就直接 <code>mmap</code></strong>，这种 chunk 在头上打 <code>IS_MMAPPED</code> 位，free 时直接 <code>munmap</code>，不进入任何 bin、也不与别的 chunk 合并——完全独立的生命周期。</p>
+<p>不够大（或 mmap 失败）就扩堆。</p>
+<ul>
+<li>
+<p><strong>主 arena</strong>：<code>MORECORE(size)</code>，在 Linux 上就是 <code>sbrk</code>。核心代码：
+    <code>c
+    if ((ssize_t) size &gt; 0) {
+        brk = (char *) MORECORE ((long) size);
+        if (brk != (char *) MORECORE_FAILURE)
+            madvise_thp (brk, size);
+        LIBC_PROBE (memory_sbrk_more, 2, brk, size);
+    }</code>
+    扩堆成功后，把新得到的地址段并入 top chunk。</p>
+</li>
+<li>
+<p><strong>非主 arena</strong>：先 <code>grow_heap</code> 扩当前 heap（本质是 <code>mprotect</code> 把之前预留的地址范围变可读写），失败再 <code>new_heap</code> 申请一整块对齐的 <code>HEAP_MAX_SIZE</code> 区域。</p>
+</li>
+</ul>
+<p>两条路径都失败了怎么办？进入"内存不足"那一节再细讲。</p>
+<hr />
+<h2>五、回收路径：free 背后的工作</h2>
+<p><code>__libc_free</code> 的结构很清晰，它是一条 "先便宜检查、再分级归位、最后合并 trim" 的流水线。</p>
+<pre><code class="language-c">void
+__libc_free (void *mem)
+{
+    if (mem == NULL) return;
+
+    mchunkptr p = mem2chunk (mem);
+    INTERNAL_SIZE_T size = chunksize (p);
+
+    if (__glibc_unlikely (misaligned_chunk (p)))
+        return malloc_printerr_tail (&quot;free(): invalid pointer&quot;);
+
+#if USE_TCACHE
+    if (__glibc_likely (size &lt; mp_.tcache_max_bytes))
+    {
+        tcache_entry *e = (tcache_entry *) chunk2mem (p);
+        if (__glibc_unlikely (e-&gt;key == tcache_key))
+            return tcache_double_free_verify (e);         /* 双释放检测 */
+
+        size_t tc_idx = csize2tidx (size);
+        if (__glibc_likely (tc_idx &lt; TCACHE_SMALL_BINS)) {
+            if (__glibc_likely (tcache-&gt;num_slots[tc_idx] != 0))
+                return tcache_put (p, tc_idx);            /* 小块进 tcache */
+        } else {
+            tc_idx = large_csize2tidx (size);
+            if (size &gt;= MINSIZE
+                &amp;&amp; __glibc_likely (tcache-&gt;num_slots[tc_idx] != 0))
+                return tcache_put_large (p, tc_idx);      /* 大块进 large tcache */
+        }
+    }
+#endif
+
+    _int_free_chunk (arena_for_chunk (p), p, size, 0);
+}
+</code></pre>
+<h3>1. 对齐检查 + 双释放检测</h3>
+<p>这两条是最便宜、也最有效的前置检查：</p>
+<ul>
+<li><code>misaligned_chunk</code>：返回的用户指针如果对齐不正确，基本就是非法指针。</li>
+<li><code>e-&gt;key == tcache_key</code>：如果这块内存上次是进 tcache 的，<code>key</code> 还在，当前又被 free 一次，直接 O(1) 判定为 tcache 内双释放。</li>
+</ul>
+<p>这是把"常见缺陷立刻打断"的关键位置，成本极低、收益极高。</p>
+<h3>2. 分级放回</h3>
+<ul>
+<li>尺寸在 tcache 覆盖范围内，且对应桶没满，就直接进 tcache，free 路径在此结束；</li>
+<li>否则走 <code>_int_free_chunk</code>，进入合并流程。</li>
+</ul>
+<h3>3. 合并：_int_free_merge_chunk</h3>
+<p>合并是这套分配器的"骨骼"，核心代码如下：</p>
+<pre><code class="language-c">static void
+_int_free_merge_chunk (mstate av, mchunkptr p, INTERNAL_SIZE_T size)
+{
+    mchunkptr nextchunk = chunk_at_offset (p, size);
+
+    /* 三道廉价防御：避免 top 双释放、越界 chunk、被标记为空闲的再次 free */
+    if (__glibc_unlikely (p == av-&gt;top))
+        malloc_printerr (&quot;double free or corruption (top)&quot;);
+    if (__glibc_unlikely (contiguous (av)
+                          &amp;&amp; (char *) nextchunk
+                          &gt;= ((char *) av-&gt;top + chunksize (av-&gt;top))))
+        malloc_printerr (&quot;double free or corruption (out)&quot;);
+    if (__glibc_unlikely (!prev_inuse (nextchunk)))
+        malloc_printerr (&quot;double free or corruption (!prev)&quot;);
+
+    INTERNAL_SIZE_T nextsize = chunksize (nextchunk);
+
+    /* 向后合并：前驱若空闲，回退并 unlink */
+    if (!prev_inuse (p)) {
+        INTERNAL_SIZE_T prevsize = prev_size (p);
+        size += prevsize;
+        p = chunk_at_offset (p, -((long) prevsize));
+        if (__glibc_unlikely (chunksize (p) != prevsize))
+            malloc_printerr (&quot;corrupted size vs. prev_size while consolidating&quot;);
+        unlink_chunk (av, p);
+    }
+
+    size = _int_free_create_chunk (av, p, size, nextchunk, nextsize);
+    _int_free_maybe_trim (av, size);
+}
+</code></pre>
+<p><code>_int_free_create_chunk</code> 再处理"向前合并"与最终归位。</p>
+<pre><code class="language-c">if (nextchunk != av-&gt;top) {
+    bool nextinuse = inuse_bit_at_offset (nextchunk, nextsize);
+    if (!nextinuse) { unlink_chunk (av, nextchunk); size += nextsize; }
+    else            clear_inuse_bit_at_offset (nextchunk, 0);
+
+    if (!in_smallbin_range (size)) {
+        bck = unsorted_chunks (av); fwd = bck-&gt;fd;   /* 大块先进 unsorted */
+    } else {
+        int idx = smallbin_index (size);
+        bck = bin_at (av, idx); fwd = bck-&gt;fd;       /* 小块直接进 smallbin */
+        mark_bin (av, idx);
+    }
+    p-&gt;bk = bck; p-&gt;fd = fwd; bck-&gt;fd = p; fwd-&gt;bk = p;
+    set_head (p, size | PREV_INUSE);
+    set_foot (p, size);
+} else {
+    /* 紧邻 top，直接并入 top */
+    size += nextsize;
+    set_head (p, size | PREV_INUSE);
+    av-&gt;top = p;
+}
+</code></pre>
+<p><strong>这就是所谓的 immediate coalescing——只要物理相邻的块都是空闲的，立即合并成一个更大的块</strong>，它依赖两个不变量：</p>
+<ol>
+<li><code>mchunk_prev_size</code> 与前驱 <code>chunksize</code> 一致；</li>
+<li>双向链表 <code>fd-&gt;bk == p &amp;&amp; bk-&gt;fd == p</code>。</li>
+</ol>
+<p>任何越界写、UAF 都会在这两条校验里触发 <code>malloc_printerr</code> 直接 abort，把"数据损坏扩散"限制在第一次错误附近，不让它延迟爆炸到几小时甚至几天之后。</p>
+<h3>4. trim：把内存还给内核</h3>
+<p>合并出来的块如果够大（<code>size &gt;= ATTEMPT_TRIMMING_THRESHOLD</code>，即 64 KiB），会尝试把 top 之后的部分还给内核。</p>
+<pre><code class="language-c">static void
+_int_free_maybe_trim (mstate av, INTERNAL_SIZE_T size)
+{
+    if (size &gt;= ATTEMPT_TRIMMING_THRESHOLD) {
+        if (av == &amp;main_arena) {
+#ifndef MORECORE_CANNOT_TRIM
+            if (chunksize (av-&gt;top) &gt;= mp_.trim_threshold)
+                systrim (mp_.top_pad, av);       /* brk 回退 */
+#endif
+        } else {
+            heap_info *heap = heap_for_ptr (top (av));
+            heap_trim (heap, mp_.top_pad);       /* 可部分 munmap */
+        }
+    }
+}
+</code></pre>
+<p>主 arena 走 <code>systrim</code>，其实就是 <code>sbrk(-n)</code>，把 brk 指针往回缩；非主 arena 走 <code>heap_trim</code>，可以把当前 heap 中 top 之后的整段 <code>munmap</code>。</p>
+<p>mmap 出来的大 chunk 走独立分支。</p>
+<pre><code class="language-c">if (chunk_is_mmapped (p)) {
+    /* 动态调高 mmap_threshold：这次的大 chunk 暗示“这个量级值得直接 mmap” */
+    if (!mp_.no_dyn_threshold
+        &amp;&amp; chunksize_nomask (p) &gt; mp_.mmap_threshold
+        &amp;&amp; chunksize_nomask (p) &lt;= DEFAULT_MMAP_THRESHOLD_MAX) {
+        mp_.mmap_threshold = chunksize (p);
+        mp_.trim_threshold = 2 * mp_.mmap_threshold;
+    }
+    munmap_chunk (p);
+}
+</code></pre>
+<p><strong>这是一个很多人踩过的坑</strong>：程序一旦分配过一个很大的块再释放，<code>mmap_threshold</code> 会被拉高到那个量级，之后同量级的分配不再走 mmap、而是留在堆上——看起来像"内存泄漏"或者"RSS 只涨不降"，其实只是分配器在自适应。要关这套启发式，可以用 <code>mallopt(M_MMAP_THRESHOLD, ...)</code> 或 <code>GLIBC_TUNABLES</code> 把 <code>mmap_threshold</code> 钉死。</p>
+<hr />
+<h2>六、bin：按尺寸分层的空闲链表</h2>
+<p>上面反复出现的 "bin"，整体是一组按尺寸分层的空闲链表，每个 arena 有 128 个。</p>
+<pre><code class="language-c">#define NBINS             128
+#define NSMALLBINS         64
+#define SMALLBIN_WIDTH    MALLOC_ALIGNMENT
+#define MIN_LARGE_SIZE    ((NSMALLBINS - SMALLBIN_CORRECTION) * SMALLBIN_WIDTH)
+</code></pre>
+<p>这 128 个 bin 的分工是：</p>
+<ul>
+<li><strong>smallbin（约 64 个）</strong>：每个 bin 只存一种固定尺寸，步长 <code>MALLOC_ALIGNMENT</code>。命中即用，不需要遍历。</li>
+<li><strong>largebin（约 63 个）</strong>：每个 bin 存一段尺寸区间，内部<strong>按 chunk 尺寸降序双向链表排列</strong>，并通过 <code>fd_nextsize</code> / <code>bk_nextsize</code> 形成"同尺寸段的跳表"，支持 best-fit 扫描。</li>
+<li><strong>unsorted bin（1 号 bin）</strong>：近期 free 的 chunk 与 largebin 切分的 remainder，在正式归位前先落到这里。给 malloc 一次"快速复用"机会。</li>
+<li><strong>top chunk</strong>：不在任何 bin 里，是 arena 末尾待用的最后一块，所有 bin 都匹配不上时才切它。</li>
+</ul>
+<p>再加一张位图 <code>binmap</code>，记录每个 bin 是否非空，扫描时可以一跳跳过空桶。</p>
+<p>这整套结构的总体节奏是：</p>
+<pre><code>free → 可能先去 tcache → 不行就去 unsorted bin → 下次 malloc 扫描时
+        → 精确匹配就拿走 → 否则按 smallbin / largebin 归位 → 下次再按桶查找
+</code></pre>
+<p>换句话说，<strong>unsorted bin 是延迟归位的缓冲池，tcache 是延迟合并的缓冲池</strong>，它们的共同目标都是：把尽可能多的请求挡在便宜路径上。</p>
+<hr />
+<h2>七、arena：多线程下的可扩展性</h2>
+<p>单线程进程直接用 <code>main_arena</code> 就够了。
+<code>main_arena</code> 靠 <code>brk</code> 扩堆，所有状态都集中在那里，但一旦多线程并发分配，锁竞争就会成瓶颈——这就是 arena 设计的出发点。</p>
+<h3>1. 主 arena 与非主 arena</h3>
+<ul>
+<li><strong>main_arena</strong>：用 <code>brk/sbrk</code> 扩堆，地址空间连续；</li>
+<li><strong>非主 arena</strong>：每个用 <code>mmap</code> 一整块 <code>HEAP_MAX_SIZE</code>（64 位默认 64 MiB）对齐区域做 heap，arena 控制块嵌在 heap 头部。需要更多空间时用 <code>mprotect</code> 把预留的地址范围变可读写，相当于按页增量扩堆。</li>
+</ul>
+<p>arena 的数量有上限：</p>
+<pre><code class="language-c">#define NARENAS_FROM_NCORES(n) ((n) * (sizeof (long) == 4 ? 2 : 8))
+</code></pre>
+<p>64 位系统的自动上限按 <code>8×CPU 核数</code>推导，32 位按 <code>2×CPU</code> 推导。若显式设置 <code>arena_max</code>，则以该值为准（可通过 <code>GLIBC_TUNABLES</code> 配置）。</p>
+<h3>2. arena 选择：arena_get2</h3>
+<p>线程第一次 malloc 时要挑一个 arena。
+<code>arena_get2</code> 的策略是"复用优先、不够再开新的、开够了只能排队"：</p>
+<pre><code class="language-c">static mstate
+arena_get2 (size_t size, mstate avoid_arena)
+{
+    mstate a;
+    static size_t narenas_limit;
+
+    a = get_free_list ();                    /* ① 先看 free_list 有没有闲置 arena */
+    if (a == NULL) {
+        /* ② 算出 arena 上限，没到就开一个新 arena */
+        ...
+    repeat:;
+        size_t n = narenas;
+        if (__glibc_unlikely (n &lt;= narenas_limit - 1)) {
+            if (atomic_compare_and_exchange_bool_acq (&amp;narenas, n + 1, n))
+                goto repeat;
+            a = _int_new_arena (size);
+            if (__glibc_unlikely (a == NULL))
+                atomic_fetch_add_relaxed (&amp;narenas, -1);
+        } else
+            a = reused_arena (avoid_arena);  /* ③ 上限到了，找一个现有的共用 */
+    }
+    return a;
+}
+</code></pre>
+<p><code>reused_arena</code> 会尝试 <code>trylock</code> 每个已有 arena，抢到哪个就用哪个，如果都抢不到那就阻塞等下一个。</p>
+<p><strong>这个设计有一个必须理解的工程含义</strong> arena 数量封顶以后，多出来的线程会开始共用，锁竞争就回来了，因此"线程数 &gt; 核数"的典型服务端场景，若分配压力大，要么调大 <code>arena_max</code>，要么缩小 tcache 以外的分配量（把更多请求挡在线程本地）。</p>
+<h3>3. arena 切换重试：arena_get_retry</h3>
+<p>如果本 arena 要不出来，<code>__libc_malloc2</code> 会换一个 arena 再试一次：</p>
+<pre><code class="language-c">static mstate
+arena_get_retry (mstate ar_ptr, size_t bytes)
+{
+    LIBC_PROBE (memory_arena_retry, 2, bytes, ar_ptr);
+    __libc_lock_unlock (ar_ptr-&gt;mutex);
+    if (ar_ptr != &amp;main_arena) {
+        ar_ptr = &amp;main_arena;
+        __libc_lock_lock (ar_ptr-&gt;mutex);
+    } else {
+        ar_ptr = arena_get2 (bytes, ar_ptr);
+    }
+    return ar_ptr;
+}
+</code></pre>
+<p>源码的注释点出了设计思路：<strong>main arena 要不到，多半是 <code>sbrk</code> 失败了（地址空间被占或 <code>RLIMIT_DATA</code> 顶到），换别的 arena 还能 <code>mmap</code> 一块新 heap 试试；别的 arena 要不到，多半是 <code>mmap</code> 区太满（<code>mp_.n_mmaps_max</code>），回 main arena 走 <code>sbrk</code> 反而可能成功</strong>。</p>
+<p>这是一条简单却实用的退路。</p>
+<hr />
+<h2>八、内存不足时：分配器的应激反应</h2>
+<p>这是本文最关心的一节，因为"<code>malloc</code> 什么时候会真的返回 <code>NULL</code>" 的答案比想象中复杂得多。glibc 的分配器是一个多级退路系统，层层降级：</p>
+<p><strong>第一级：tcache 命中</strong> 不碰 arena，拿不到就走第二级。</p>
+<p><strong>第二级：<code>_int_malloc</code> 在 bins / top chunk 里找</strong> 只要当前 arena 曾经有过足够的空间，又恰好有空闲、又能合并出一块够大的 chunk，就成功。</p>
+<p><strong>第三级：<code>sysmalloc</code> 的 mmap 路径</strong> 大请求（<code>nb &gt;= mmap_threshold</code>）或者"完全没有可用 arena"（<code>av == NULL</code>）时优先走 mmap：</p>
+<pre><code class="language-c">if (av == NULL
+    || ((unsigned long) nb &gt;= (unsigned long) mp_.mmap_threshold
+        &amp;&amp; mp_.n_mmaps &lt; mp_.n_mmaps_max))
+{
+    ...
+    mm = sysmalloc_mmap (nb, pagesize, 0);
+    if (mm != MAP_FAILED) return mm;
+    tried_mmap = true;
+}
+</code></pre>
+<p><code>n_mmaps</code> 如果已经到了 <code>n_mmaps_max</code>（默认 65536，防 VMA 爆炸）或 mmap 失败，这一级出局。</p>
+<p><strong>第四级：扩当前 heap。</strong>非主 arena 走 <code>grow_heap</code>，本质是 <code>mprotect</code> 把 heap 内还没启用的地址范围变可读写：</p>
+<pre><code class="language-c">if ((long) (MINSIZE + nb - old_size) &gt; 0
+    &amp;&amp; grow_heap (old_heap, MINSIZE + nb - old_size) == 0)
+    ...
+</code></pre>
+<p>每个非主 heap 最大 <code>HEAP_MAX_SIZE</code>，到顶了就失败。</p>
+<p><strong>第五级：开新 heap / MORECORE。</strong></p>
+<ul>
+<li>非主 arena：<code>new_heap</code> 申请一整块新的 heap 对齐区域；</li>
+<li>主 arena：<code>MORECORE(size)</code> = <code>sbrk(size)</code> 扩堆。</li>
+</ul>
+<p>主 arena 里 sbrk 失败还有一条备份路径——<code>sysmalloc_mmap_fallback</code>：</p>
+<pre><code class="language-c">if (brk == (char *) MORECORE_FAILURE) {
+    /*
+     * sbrk 失败了，但系统里可能还有离散空间可 mmap。
+     * 这里会忽略 n_mmaps_max 和 mmap_threshold，因为这块空间不会作为独立 mmap chunk 使用。
+     */
+    size_t fallback_size = nb + mp_.top_pad + MINSIZE;
+    char *mbrk = MAP_FAILED;
+    if (mp_.hp_pagesize &gt; 0)
+        mbrk = sysmalloc_mmap_fallback (&amp;size, fallback_size,
+                                        mp_.hp_pagesize,
+                                        mp_.hp_pagesize, mp_.hp_flags);
+    if (mbrk == MAP_FAILED)
+        mbrk = sysmalloc_mmap_fallback (&amp;size, fallback_size,
+                                        MMAP_AS_MORECORE_SIZE,
+                                        pagesize, 0);
+    if (mbrk != MAP_FAILED) {
+        __set_vma_name (mbrk, fallback_size, &quot; glibc: malloc&quot;);
+        set_noncontiguous (av);                    /* 从此 arena 不再假设连续 */
+        ...
+    }
+}
+</code></pre>
+<p><strong>换 arena 再试一次。</strong><code>__libc_malloc2</code> 里还会调用 <code>arena_get_retry</code>，把整条链重跑一遍，利用"主 arena 与非主 arena 用两条不同系统调用路径"的特点做第二次尝试。</p>
+<p><strong>最后的终点：<code>ENOMEM</code>。</strong></p>
+<pre><code class="language-c">/* catch all failure paths */
+__set_errno (ENOMEM);
+return NULL;
+</code></pre>
+<p>所以当业务代码看到 <code>malloc</code> 返回 <code>NULL</code> 的时候，它背后实际上已经走完了：</p>
+<pre><code>tcache miss → _int_malloc 在 bin 里找不到 → top chunk 不够
+     → sysmalloc 尝试 mmap 失败
+     → 扩当前 heap 失败
+     → 开新 heap 失败
+     → sbrk 失败 + mmap fallback 失败
+     → 换另一个 arena 把上面重跑一次
+     → 还不行 → errno = ENOMEM
+</code></pre>
+<p>这条链的中间任何一环成功，malloc 就返回了。也就是说：<strong>返回 <code>NULL</code> 的条件其实相当苛刻</strong>——进程地址空间、内核 commit 策略（<code>vm.overcommit_memory</code>）、<code>RLIMIT_AS</code> / <code>RLIMIT_DATA</code>、VMA 数量上限（<code>vm.max_map_count</code>），至少有一项"卡死到底"，才会触发 ENOMEM。</p>
+<p>分配器本身<strong>不会主动触发 OOM killer</strong> —— OOM 是内核在物理内存紧张时的行为。
+在典型的 Linux 默认配置下（<code>overcommit_memory = 0</code>），<code>mmap</code> / <code>sbrk</code> 会先乐观返回成功，等你真正写入这些页面、内核发现没物理页时再触发 OOM。
+这就是为什么"进程莫名被杀"有时候<strong>跟 malloc 的返回值对不上号</strong> —— malloc 没返回 NULL，但第一次 <code>memset</code> 就把进程带走了。</p>
+<hr />
+<h2>九、realloc：原地优先，复制兜底</h2>
+<p><code>realloc</code> 的决策树在 <code>_int_realloc</code>（<code>malloc.c:4557</code>，已省略 arena flag、tag、校验等次要细节）：</p>
+<pre><code class="language-c">/* 1. 已够大：直接切掉尾部剩余，原地返回 */
+if ((unsigned long) oldsize &gt;= (unsigned long) nb) {
+    newp = oldp;
+    newsize = oldsize;
+}
+else {
+    /* 2. 后继块是 top chunk：把 top 向后推，零拷贝扩展 */
+    if (next == av-&gt;top &amp;&amp;
+        (unsigned long)(newsize = oldsize + nextsize) &gt;= (unsigned long)(nb + MINSIZE)) {
+        set_head_size (oldp, nb | (av != &amp;main_arena ? NON_MAIN_ARENA : 0));
+        av-&gt;top = chunk_at_offset (oldp, nb);
+        set_head (av-&gt;top, (newsize - nb) | PREV_INUSE);
+        return chunk2mem (oldp);                            /* 零拷贝 */
+    }
+    /* 3. 后继块空闲：unlink 并入，零拷贝扩展 */
+    else if (next != av-&gt;top &amp;&amp; !inuse (next) &amp;&amp;
+             (unsigned long)(newsize = oldsize + nextsize) &gt;= (unsigned long) nb) {
+        newp = oldp;
+        unlink_chunk (av, next);                            /* 零拷贝 */
+    }
+    /* 4. 兜底：_int_malloc 新块 + memcpy + _int_free_chunk 旧块 */
+    else {
+        newmem = _int_malloc (av, nb - MALLOC_ALIGN_MASK);
+        if (newmem == NULL) return NULL;
+
+        newp = mem2chunk (newmem);
+        newsize = chunksize (newp);
+
+        /* 特殊情况：新 chunk 恰好紧接在 oldp 后面，直接合并，仍零拷贝 */
+        if (newp == next) {
+            newsize += oldsize;
+            newp = oldp;
+        } else {
+            memcpy (newmem, chunk2mem (oldp), memsize (oldp));  /* 真正拷贝 */
+            _int_free_chunk (av, oldp, chunksize (oldp), 1);
+            return newmem;
+        }
+    }
+}
+
+/* 5. 切分尾部剩余（remainder_size &gt;= MINSIZE 才切） */
+remainder_size = newsize - nb;
+if (remainder_size &lt; MINSIZE) {
+    set_head_size (newp, newsize | ...);
+} else {
+    remainder = chunk_at_offset (newp, nb);
+    set_head_size (newp, nb | ...);
+    set_head (remainder, remainder_size | PREV_INUSE | ...);
+    _int_free_chunk (av, remainder, chunksize (remainder), 1);
+}
+return chunk2mem (newp);
+</code></pre>
+<p>mmap 出来的 chunk 走独立的 <code>mremap_chunk</code> 分支——能 <code>mremap</code> 就零拷贝完成。</p>
+<p>性能上能不能命中"原地扩展"，关键在于<strong>后继块是否空闲、或者它就是 top</strong>。
+而 tcache 会延迟"相邻 chunk 归还合并"，所以即便你顺序 free 了大量相邻小块，其中一部分仍可能卡在各个线程的 tcache 里、不与主块合并——<strong>这是容器（<code>std::vector</code> 之类）在某些工作负载下 reserve 收益依然显著的底层原因</strong>。</p>
+<hr />
+<h2>十、安全机制：廉价校验 + 出错立即 abort</h2>
+<p>分配器不追求"每次分配都体检一遍"。在热路径上只放最便宜、收益最明显的校验：</p>
+<ul>
+<li><strong>对齐检查</strong>：<code>misaligned_chunk (p)</code>——<code>free</code> 的第一道关，非法指针直接挡下。</li>
+<li><strong><code>unlink_chunk</code> 双向一致性</strong>：<code>fd-&gt;bk == p &amp;&amp; bk-&gt;fd == p</code>，阻断经典的 unlink 攻击。</li>
+<li><strong>smallbin / largebin / unsorted 的双向链表校验</strong>：在分配路径上顺手检查，<code>bck-&gt;fd != victim</code> 即 abort。</li>
+<li><strong>tcache 双释放检测</strong>：<code>e-&gt;key == tcache_key</code>，O(1) 识别同线程内的 tcache 双释放。</li>
+<li><strong>tcache 链表的 Safe-Linking</strong>：<code>PROTECT_PTR</code> 把 <code>next</code> 与节点地址 <code>&gt;&gt; 12</code> 异或，让 UAF 改写 <code>next</code> 变得不能直接控制目标。</li>
+<li><strong>size 与 prev_size 一致性</strong>：合并前检查 <code>chunksize (p) != prevsize</code> 就 abort。</li>
+<li><strong><code>malloc_printerr</code></strong>：一旦元数据损坏立刻 abort，避免后续分配继续放大损坏。</li>
+</ul>
+<p>这些检查的共同特点：<strong>成本极低，但能把"数据损坏无限扩散"限制在一个 chunk 范围内</strong>。它不是安全沙箱，而是一套"止血"机制。</p>
+<hr />
+<h2>十一、调优与可观测</h2>
+<h3>1. 关键 tunables</h3>
+<p>都以 <code>glibc.malloc.*</code> 的形式通过 <code>GLIBC_TUNABLES</code> 环境变量配置：</p>
+<table>
+<thead>
+<tr>
+<th>键</th>
+<th>默认</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tcache_count</code></td>
+<td>16</td>
+<td>每个 tcache bin 的默认缓存上限（可调，源码上限 <code>UINT16_MAX</code>）</td>
+</tr>
+<tr>
+<td><code>tcache_max</code></td>
+<td><strong>1032 字节</strong>（用户请求；对应 chunk 尺寸 1040）</td>
+<td>默认 1032 B 对应 chunk 总尺寸 1040 B（含头）；调大后 tcache 覆盖的最大用户请求尺寸最高可设到约 4 MiB</td>
+</tr>
+<tr>
+<td><code>tcache_unsorted_limit</code></td>
+<td>0（无限）</td>
+<td>unsorted 扫描时预填 tcache 的迭代上限</td>
+</tr>
+<tr>
+<td><code>mmap_threshold</code></td>
+<td>128 KiB 起，动态上调至 32 MiB</td>
+<td>超过此值直接 <code>mmap</code></td>
+</tr>
+<tr>
+<td><code>trim_threshold</code></td>
+<td>128 KiB 起，动态上调</td>
+<td>top chunk 超过此值触发 <code>sbrk(-n)</code></td>
+</tr>
+<tr>
+<td><code>mmap_max</code></td>
+<td>65536</td>
+<td>并存 mmap 区域上限</td>
+</tr>
+<tr>
+<td><code>arena_max</code> / <code>arena_test</code></td>
+<td><code>arena_max=0</code>，<code>arena_test=8</code>（64 位）</td>
+<td>默认先按测试阈值启用，超过阈值后按 8×CPU 推导上限（或由 <code>arena_max</code> 显式钉死）</td>
+</tr>
+<tr>
+<td><code>top_pad</code></td>
+<td>0</td>
+<td>扩展 top 时额外填充量</td>
+</tr>
+<tr>
+<td><code>perturb</code></td>
+<td>0</td>
+<td>分配 / 释放时填充的 byte，辅助捕获 UAF</td>
+</tr>
+</tbody>
+</table>
+<p>实战经验：</p>
+<ul>
+<li><strong>RSS 只涨不降</strong>：优先看动态 <code>mmap_threshold</code> 是否被拉高；可以 <code>GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072</code> 钉死。</li>
+<li><strong>多线程争用</strong>：<code>arena_max</code> 与 <code>tcache_count</code> 是最直接的两个旋钮。</li>
+<li><strong>碎片抬高</strong>：<code>tcache_unsorted_limit</code> 能约束 tcache 过度囤积带来的延迟回收。</li>
+</ul>
+<h3>2. 可观测手段</h3>
+<ul>
+<li><code>mallinfo2()</code> / <code>malloc_info (0, FILE *)</code>：查看 arena、chunks 统计。</li>
+<li><code>LIBC_PROBE</code> 静态探针：<code>memory_malloc_retry</code>、<code>memory_sbrk_more</code>、<code>memory_arena_new</code>、<code>memory_mallopt_free_dyn_thresholds</code> 等，可以用 systemtap 或 perf probe 挂钩。</li>
+<li><code>MALLOC_PERTURB_</code> / <code>MALLOC_CHECK_</code>：诊断模式下捕获经典越界与双释放。</li>
+<li><code>malloc_trim (0)</code>：手动触发一次 trim，检查 RSS 能不能掉下来。</li>
+</ul>
+<h3>3. 常见故障模式与定位</h3>
+<ol>
+<li><strong><code>free(): invalid pointer</code> / <code>corrupted double-linked list</code></strong>：对齐或 unlink 校验命中，优先查 UAF 和越界写，而不是调参数。</li>
+<li><strong>短时内存峰值</strong>：tcache 把 chunk 压在线程本地、延迟合并；在突发分配后，若线程没有退出、<code>tcache_thread_shutdown</code> 没触发，这部分不会回到 arena。</li>
+<li><strong>RSS 只涨不降</strong>：动态 <code>mmap_threshold</code> + <code>trim_threshold</code> 的自适应结果。</li>
+<li><strong>尾延迟抖动</strong>：典型来源是 arena 锁争用、largebin 扫描、<code>sysmalloc</code>（尤其是新 heap 分配或 <code>sbrk</code>）。</li>
+<li><strong><code>malloc</code> 返回 NULL 但系统内存看着够</strong>：检查 <code>vm.max_map_count</code>、<code>RLIMIT_AS</code>、<code>RLIMIT_DATA</code> 和 <code>n_mmaps_max</code>。</li>
+<li><strong>大对象 realloc 慢</strong>：看能不能命中 <code>next == av-&gt;top</code> 或 <code>!inuse (next)</code> 路径；容器预留往往比调分配器参数更有效。</li>
+</ol>
+<hr />
+<h2>十二、结语</h2>
+<p>glibc 的分配器可以总结为三句话：</p>
+<ol>
+<li><strong>malloc / free 是一个三层漏斗</strong>：tcache 挡在第一层做线程本地闭环，<code>_int_malloc</code> 在 arena 级的 bins 和 top chunk 里决策，<code>sysmalloc</code> 做最终的向内核索取。每一层都力图在最便宜的位置解决问题。</li>
+<li><strong>整条链路上布满了"廉价校验 + 立即 abort"</strong>：对齐、双链表一致性、size / prev_size 一致、tcache_key、Safe-Linking——它们不试图面面俱到，只力求把"数据损坏扩散"截在第一时间。</li>
+<li><strong>工程表现由不变量维护、启发式阈值、工作负载三者共同决定</strong>。调优之前要先定位热点：是 tcache 命中率、是 arena 锁争用、是 sysmalloc 频率，还是 OOM 之前的 <code>mmap</code> 饱和——不同热点对应完全不同的旋钮。</li>
+</ol>
+<p>把这三层想清楚，再回头看一行 <code>malloc(n)</code> 和 <code>free(p)</code>，就能看出它在不同工作负载下能走多少条不同的路。</p>
+<hr />
+<h2>扩展：从 <code>free -lh</code> 看 malloc / free 对系统内存的影响</h2>
+<pre><code>              total    used    free   shared  buff/cache  available
+Mem:          7.5Gi   3.7Gi  287Mi    19Mi       3.9Gi      3.8Gi
+Low:          7.5Gi   7.2Gi  287Mi
+High:           0B      0B     0B
+Swap:         4.0Gi   1.2Gi  2.8Gi
+</code></pre>
+<p>说明：为便于解释字段，示例保留了 <code>Low/High</code> 行；很多 64 位发行版的 <code>free -lh</code> 实际输出可能不显示这两行。</p>
+<h3>1. 各字段含义</h3>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>total</code></td>
+<td>系统物理内存总量</td>
+</tr>
+<tr>
+<td><code>used</code></td>
+<td>已被进程实际占用的物理页（不含 buff/cache）</td>
+</tr>
+<tr>
+<td><code>free</code></td>
+<td>内核完全未使用的物理页</td>
+</tr>
+<tr>
+<td><code>shared</code></td>
+<td><code>tmpfs</code> 等共享内存占用</td>
+</tr>
+<tr>
+<td><code>buff/cache</code></td>
+<td>内核 page cache + 块设备 buffer，可在内存紧张时回收</td>
+</tr>
+<tr>
+<td><code>available</code></td>
+<td>估算的可供新分配使用的内存：<code>free + 可回收 buff/cache</code></td>
+</tr>
+<tr>
+<td><code>Low</code> / <code>High</code></td>
+<td>64 位系统已不使用 LowMem/HighMem 分区，此字段通常为 0（<code>High: 0B</code>）；该行是 32 位内核时代的遗留字段，可忽略</td>
+</tr>
+<tr>
+<td><code>Swap</code></td>
+<td>交换分区总量 / 已用 / 剩余</td>
+</tr>
+</tbody>
+</table>
+<p>从图中数据看：<code>used(3.7GiB) + free(287MiB) + buff/cache(3.9GiB) ≈ total(7.5GiB)</code>。<code>free</code> 只有 287 MiB，但 <code>available</code> 有 3.8 GiB——内核可随时回收 page cache 让出内存，因此"真正可用"远比 <code>free</code> 大。</p>
+<h3>2. malloc 如何影响这些数字</h3>
+<p><strong>虚拟地址 ≠ 物理页</strong>。<code>malloc</code> 返回指针的那一刻，内核只承诺了虚拟地址空间，物理页是在第一次写入时由缺页中断分配（demand paging）。因此：</p>
+<ul>
+<li><code>malloc</code> 之后、写入之前：<code>used</code> <strong>不变</strong>；</li>
+<li>写入后：物理页被 fault-in，<code>used</code> <strong>增加</strong>；</li>
+<li><code>free</code> 之后：ptmalloc 把 chunk 留在 tcache / bin 里复用，物理页<strong>依然在进程手里</strong>，<code>used</code> <strong>不变</strong>；</li>
+<li>仅当 ptmalloc 调用 <code>brk()</code> 缩堆或 <code>munmap()</code> 归还大块时，物理页才真正释放，<code>used</code> <strong>才减少</strong>。</li>
+</ul>
+<p>这正是"RSS 只涨不降"的根本原因：<code>free(p)</code> 不等于还给操作系统。</p>
+<h3>3. Swap 已用 1.2 GiB 意味着什么</h3>
+<p>图中 Swap 已用 1.2 GiB，说明系统在某个时刻物理内存已不够用，内核把部分冷页换出。对 malloc 的影响：</p>
+<ul>
+<li>若进程的 heap 中有长期未访问的 chunk（比如 tcache / bin 里缓存的空闲块），这些页可能已被换出；</li>
+<li>下次访问这些 chunk（例如 tcache 命中后写入）会触发 swap-in，耗时从纳秒级跳升到毫秒级，直接表现为<strong>尾延迟抖动</strong>；</li>
+<li><code>malloc_trim()</code> / <code>MADV_FREE</code> / <code>MADV_DONTNEED</code> 主动释放空闲 chunk 对应的物理页，可减少 swap 压力，但代价是下次分配需重新 fault-in。</li>
+</ul>
+<h3>4. <code>available</code> 是 malloc 真正能用的上限</h3>
+<p><code>malloc</code> 向内核要内存（<code>sysmalloc</code>）时，内核参考的是 <code>available</code>，而不是 <code>free</code>。从图中看：</p>
+<ul>
+<li><code>available = 3.8 GiB</code>：当前还有足够余量；</li>
+<li>若 <code>available</code> 趋近于 0，<code>mmap</code> / <code>brk</code> 开始失败，<code>sysmalloc</code> 返回 <code>NULL</code>，<code>malloc</code> 最终返回 <code>NULL</code>；</li>
+<li>同时 OOM Killer 可能介入，优先终止 <code>oom_score</code> 最高的进程。</li>
+</ul>
+<p><strong>实践建议</strong>：在内存敏感的服务里，监控 <code>available</code> 比监控 <code>free</code> 更有意义；当 <code>available &lt; 总内存 × 10%</code> 时，应触发告警并考虑主动调用 <code>malloc_trim()</code> 或降低 <code>mmap_threshold</code>。</p>
+    </article>
+</body>
+</html>
