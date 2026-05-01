@@ -5,6 +5,8 @@
 .cursor
 xhs/
 **/__pycache__
+src/cpp/bin/
+
 # Compiled Object files
 *.slo
 *.lo

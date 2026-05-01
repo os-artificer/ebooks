@@ -387,7 +387,9 @@ if (av == NULL
 
 不够大（或 mmap 失败）就扩堆。
 
-- **主 arena**：`MORECORE(size)`，在 Linux 上就是 `sbrk`。核心代码：
+- **主 arena**：`MORECORE(size)`，在 Linux 上就是 `sbrk`。
+  核心代码：
+
     ```c
     if ((ssize_t) size > 0) {
         brk = (char *) MORECORE ((long) size);
@@ -396,6 +398,7 @@ if (av == NULL
         LIBC_PROBE (memory_sbrk_more, 2, brk, size);
     }
     ```
+    
     扩堆成功后，把新得到的地址段并入 top chunk。
 
 - **非主 arena**：先 `grow_heap` 扩当前 heap（本质是 `mprotect` 把之前预留的地址范围变可读写），失败再 `new_heap` 申请一整块对齐的 `HEAP_MAX_SIZE` 区域。
