@@ -613,6 +613,30 @@ def default_slices_内存池() -> list[tuple[int, int]]:
     ]
 
 
+def slices_by_h2(lines: list[str]) -> list[tuple[int, int]]:
+    """
+    One PNG slice per ## heading block (from each ## through line before next ## or EOF).
+    Lines before the first ## become their own leading slice (title / intro).
+    """
+    n = len(lines)
+    if n == 0:
+        return []
+    heads: list[int] = []
+    for i, line in enumerate(lines):
+        if re.match(r"^##\s+\S", line):
+            heads.append(i + 1)
+    if not heads:
+        return [(1, n)]
+    out: list[tuple[int, int]] = []
+    if heads[0] > 1:
+        out.append((1, heads[0] - 1))
+    for k in range(len(heads)):
+        a = heads[k]
+        b = heads[k + 1] - 1 if k + 1 < len(heads) else n
+        out.append((a, b))
+    return out
+
+
 def auto_slices(lines: list[str], max_lines: int = 55, min_lines: int = 24) -> list[tuple[int, int]]:
     """
     Build 1-based inclusive line slices automatically.
@@ -776,6 +800,11 @@ def main() -> None:
         help="Auto-generate line slices for any markdown file",
     )
     parser.add_argument(
+        "--by-h2",
+        action="store_true",
+        help="One slice per ## section (after each ## through next ## or EOF)",
+    )
+    parser.add_argument(
         "--max-lines",
         type=int,
         default=55,
@@ -796,7 +825,10 @@ def main() -> None:
         for md_path, lang_folder in sources:
             out_dir = article_out_dir(args.out_root, lang_folder, md_path)
             lines = md_path.read_text(encoding="utf-8").splitlines()
-            slices = auto_slices(lines, max_lines=max(20, args.max_lines))
+            if args.by_h2:
+                slices = slices_by_h2(lines)
+            else:
+                slices = auto_slices(lines, max_lines=max(20, args.max_lines))
             label = lang_label_for_path(md_path)
             print(f"\n== {md_path} -> {out_dir}", flush=True)
             run_one(md_path, out_dir, slices, lang_label=label, write_cover=write_cover)
@@ -812,11 +844,16 @@ def main() -> None:
 
     if args.preset == "内存池":
         slices = default_slices_内存池()
-    elif args.auto:
+    elif args.by_h2 or args.auto:
         lines = args.markdown.read_text(encoding="utf-8").splitlines()
-        slices = auto_slices(lines, max_lines=max(20, args.max_lines))
+        slices = slices_by_h2(lines) if args.by_h2 else auto_slices(
+            lines, max_lines=max(20, args.max_lines)
+        )
     else:
-        print("Specify --preset 内存池 or use --auto for generic slicing.", file=sys.stderr)
+        print(
+            "Specify --preset 内存池 or --auto or --by-h2 for slicing.",
+            file=sys.stderr,
+        )
         sys.exit(1)
 
     run_one(
