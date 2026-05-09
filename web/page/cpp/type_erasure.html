@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 类型擦除：原理、备选方案与从 C++11 到 C++98 的两份参考实现</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 类型擦除：原理、备选方案与从 C++11 到 C++98 的两份参考实现</h1>
+      <blockquote>
+<p><strong>作者：</strong>岭南过客<br />
+<strong>更新时间：</strong>2026-05-08</p>
+</blockquote>
+<p><code>std::function</code> 能装下函数、lambda、绑定器；<code>std::any</code> 能装下任意类型；<code>std::shared_ptr</code> 在不暴露 <code>T</code> 的析构方式的前提下，依然能在控制块里"记住"该用谁来 <code>delete</code>——这些"看起来不可能"的事，背后用的都是同一类技术：<strong>类型擦除（Type Erasure）</strong>。</p>
+<hr />
+<h2>一、什么是类型擦除技术</h2>
+<p><strong>把"具体类型"藏在统一接口背后，对外只暴露"能干啥"，不暴露"我是谁"。</strong></p>
+<p>我们平时拿来"统一不同类型行为"的招数有三条，类型擦除是其中之一：</p>
+<ul>
+<li><strong>函数模板/类模板</strong>：编译期多态。要求源码可见（模板要在头文件里），不同 <code>T</code> 各生成一份代码，容易代码膨胀。</li>
+<li><strong>公共基类 + 虚函数</strong>：运行期多态。要求被装的类<strong>主动</strong>继承基类，是<strong>侵入式</strong>的；第三方类型（你改不了源码的那种）就装不进来了。</li>
+<li><strong>类型擦除</strong>：运行期多态 + <strong>不要求</strong>继承公共基类。任何"长得像"目标接口的类型都能被装，是<strong>非侵入式</strong>的，也叫 duck typing 的 C++ 版。</li>
+</ul>
+<p>标准库里你见过的"老朋友"都是它的产物：</p>
+<ul>
+<li><code>std::function&lt;R(Args...)&gt;</code>：装任意可调用对象，无需继承一个 <code>Callable</code> 基类。</li>
+<li><code>std::any</code>：装任意可拷贝的对象，运行时再按 <code>type_info</code> 取出。</li>
+<li><code>std::shared_ptr&lt;T&gt;</code>：不要求 <code>T</code> 暴露析构方式，控制块里照样能 <code>delete</code>，靠的就是把 deleter 类型擦除。</li>
+</ul>
+<p>C++11 之前，社区里就已经有 <code>boost::any</code> 与 <code>boost::function</code>，它们正是用同一套 idiom 在 C++98/03 下落地的——这也是后文第 5 节单独讲 C++98 写法的原因。</p>
+<hr />
+<h2>二、类型擦除技术有什么用</h2>
+<p>放在工程里，它解决的是一类"侵入式继承不好用"的问题：</p>
+<ul>
+<li><strong>异构容器</strong>：<code>std::vector&lt;AnyDrawable&gt;</code> 同时装 <code>Circle</code>、<code>Square</code> 和 lambda，不用让它们都继承 <code>Shape</code>。</li>
+<li><strong>解耦接口与实现</strong>：库作者只规定"需要哪几个成员调用"，使用方的类爱长啥样就长啥样；第三方类型也能塞进来。</li>
+<li><strong>跨 ABI / 动态库边界</strong>：模板没法跨翻译单元，但已经擦除好的"包装类型"可以跨。<code>std::function</code> 这类类型常被作为插件 API 的参数。</li>
+<li><strong>抑制代码膨胀</strong>：纯模板按 <code>T</code> 复制一份代码；类型擦除把分发集中到一处虚调用，二进制更紧凑。</li>
+<li><strong>典型业务场景</strong>：回调表、信号槽、消息派发、插件系统、<code>Strategy</code> 模式的现代写法。</li>
+</ul>
+<p>代价也很明确：多了一次堆分配 + 一次虚调用；高频小对象不叠 SBO 时缓存不友好。因此<strong>别把它当万能钥匙</strong>：当模板就能解决、且代码膨胀可接受时，模板更直接。</p>
+<hr />
+<h2>三、类型擦除技术实现原理</h2>
+<h3>1. 五条主流备选方案</h3>
+<p>业界确实在用、且有代表性的实现路线，按"实现复杂度低 → 高""依赖语言特性少 → 多"排列，大致可分以下五条。</p>
+<h4>方案 A：Concept-Model idiom（继承 + 虚函数）— 主流方案</h4>
+<ul>
+<li><strong>思想</strong>：内部定义一个抽象基类 <code>Concept</code>，再用模板 <code>Model&lt;T&gt;</code> 派生它，把任意 <code>T</code> 的成员调用桥接到 <code>Concept</code> 的虚函数；外层包装类只持有 <code>Concept*</code> 或 <code>unique_ptr&lt;Concept&gt;</code>。</li>
+<li><strong>优点</strong>：写法直观，值语义自然（拷贝靠 <code>Clone()</code>、移动靠转移指针），调试栈干净，IDE 跳转友好。</li>
+<li><strong>缺点</strong>：每个被装对象至少一次堆分配 + 一次虚调用；不叠 SBO 时缓存不太友好。</li>
+<li><strong>代表</strong>：<code>boost::any</code>、<code>boost::function</code>、<code>std::function</code> 多数实现的核心层、libstdc++ 的 <code>std::any</code>。</li>
+</ul>
+<h4>方案 B：手写 vtable（函数指针表 + <code>void*</code>）</h4>
+<ul>
+<li><strong>思想</strong>：把虚函数表手动展开成一组 <code>void(*)(void*, ...)</code> 函数指针，包装类持有 <code>void* data</code> 与 <code>const VTable* vtable</code>。</li>
+<li><strong>优点</strong>：可关闭 RTTI / 异常；vtable 通常做成 <code>static constexpr</code>，零额外分配；C ABI 友好，做插件、跨语言很合适。</li>
+<li><strong>缺点</strong>：手写模板生成 vtable 的元代码偏繁琐；少了编译期类型校验，容易写错。</li>
+<li><strong>代表</strong>：<code>folly::Function</code> 的部分实现思路、嵌入式领域常见的手卷写法、Rust trait object 的 C++ 对照实现。</li>
+</ul>
+<h4>方案 C：基于 <code>std::function</code> 组合</h4>
+<ul>
+<li><strong>思想</strong>：把对象需要支持的每个操作各存一个 <code>std::function</code>，包装类内部就是一组 <code>std::function</code>。</li>
+<li><strong>优点</strong>：实现极短，几十行能搞定；接口要扩，加成员就行。</li>
+<li><strong>缺点</strong>：每个操作都叠了一层 <code>std::function</code>（自身就是 type erasure），开销与堆分配翻倍；表达 <code>Clone</code> 这种"克隆自己"语义很别扭。</li>
+<li><strong>代表</strong>：内部脚手架代码、教程式实现；够用，但不算工业级方案。</li>
+</ul>
+<h4>方案 D：<code>typeid</code> + 类型化存储（<code>std::any</code> 风格）</h4>
+<ul>
+<li><strong>思想</strong>：包装类记录 <code>std::type_info</code> 与 <code>void*</code>，访问时按记录的类型做 <code>any_cast</code> 取回原始类型，再用模板对具体类型做静态调用。</li>
+<li><strong>优点</strong>：能对外暴露"这里到底装了什么类型"（类型安全的取出），适合"装进去再原样取出"的场景。</li>
+<li><strong>缺点</strong>：调用方仍要知道目标类型才能做事；想做"统一接口调用"时还得再叠一层 vtable / 函数指针，复杂度并未变低。</li>
+<li><strong>代表</strong>：<code>std::any</code>、<code>boost::any</code>，侧重的是"装容器"而不是"装行为"。</li>
+</ul>
+<h4>方案 E：小缓冲优化（SBO）— 正交叠加</h4>
+<ul>
+<li><strong>思想</strong>：包装类内嵌一块对齐过的字节缓冲（典型 16–32 字节），对象够小就 placement new 进去，免堆分配；够大再退回堆。</li>
+<li><strong>优点</strong>：消除高频小对象的堆分配抖动，缓存友好。<code>std::function</code> 在大多数实现里都做了 SBO。</li>
+<li><strong>缺点</strong>：实现复杂度明显上升，要处理对齐、移动、缓冲扩展、是否可平凡复制等细节；测试面也宽。</li>
+<li><strong>代表</strong>：libstdc++ / libc++ 的 <code>std::function</code>、<code>folly::Function</code>、<code>std::any</code> 的小对象优化分支。</li>
+</ul>
+<p>注意 SBO 是<strong>正交</strong>优化：它叠在方案 A 或 B 上都行，自身不构成独立的 idiom。</p>
+<h3>2. 选型口径与本文取舍</h3>
+<ul>
+<li><strong>应用最广 = 方案 A（Concept-Model idiom）</strong>：可读性、值语义、社区共识、教学示例都最齐全；<code>boost::any</code>、<code>std::function</code> 的核心层就是它。</li>
+<li><strong>本文两份完整范例（C++11+ 与 C++98/03）只用方案 A</strong>，不掺其它，避免变成"四五份玩具实现拼盘"。</li>
+<li>何时考虑别的：</li>
+<li>跨 C ABI / 关 RTTI / 嵌入式 → 方案 B；</li>
+<li>1 小时写一个能跑的玩具 → 方案 C；</li>
+<li>强调"装进去再取出来" → 方案 D；</li>
+<li>高频小对象、压尾延迟 → 在 A 或 B 上叠方案 E。</li>
+</ul>
+<h3>3. Concept-Model idiom 拆三层</h3>
+<p>为后两节铺垫，这里先把方案 A 的三层结构说清楚：</p>
+<ul>
+<li><strong>抽象层 <code>Concept</code></strong>：声明被装对象需要支持的纯虚操作（本文范例只有 <code>Draw</code>），外加 <code>Clone</code> 与虚析构。</li>
+<li><strong>模型层 <code>Model&lt;T&gt;</code></strong>：模板派生 <code>Concept</code>，把每个虚调用桥接到 <code>T</code> 的同名成员；<code>Clone()</code> 通过 <code>new Model&lt;T&gt;(*this)</code> 复制自己。</li>
+<li><strong>包装层 <code>AnyDrawable</code></strong>：对外暴露非模板 API，内部持有指向 <code>Concept</code> 的智能指针/裸指针；拷贝时通过 <code>Concept::Clone()</code> 实现深拷贝，移动时直接转移指针。</li>
+</ul>
+<p>一次 <code>any.Draw()</code> 的分发路径如下，关键是"一次虚调用 + 一次直接调用"：</p>
+<pre><code>  Caller
+    │   调 AnyDrawable::Draw()              非模板 API
+    ▼
+  AnyDrawable::Draw()
+    │   _self-&gt;Draw()                       指针解引用
+    ▼
+  Concept::Draw()                           ← 抽象基类，纯虚函数
+    │   vptr 分发                           ★ 唯一一次虚调用
+    ▼
+  Model&lt;T&gt;::Draw()                          ← 模板派生层（桥接器）
+    │   _data.Draw()                        直接调用，编译期解析
+    ▼
+  T::Draw()                                 ← 用户类型（Circle / Square / Lambda...）
+</code></pre>
+<p>精简骨架长这样（不是完整可跑代码，完整版在第 4 节）：</p>
+<pre><code class="language-cpp">class AnyDrawable {
+    struct Concept {
+        virtual ~Concept() = default;
+        virtual void Draw() const = 0;
+        virtual std::unique_ptr&lt;Concept&gt; Clone() const = 0;
+    };
+
+    template &lt;typename T&gt;
+    struct Model final : Concept {
+        T _data;
+        explicit Model(T data) : _data(std::move(data)) {}
+        void Draw() const override { _data.Draw(); }
+        std::unique_ptr&lt;Concept&gt; Clone() const override {
+            return std::unique_ptr&lt;Concept&gt;(new Model&lt;T&gt;(_data));
+        }
+    };
+
+    std::unique_ptr&lt;Concept&gt; _self;
+public:
+    template &lt;typename T&gt; AnyDrawable(T data);   // 包进 Model&lt;T&gt;
+    AnyDrawable(const AnyDrawable&amp; o);           // _self = o._self-&gt;Clone()
+    AnyDrawable(AnyDrawable&amp;&amp; o) noexcept;       // 转移指针
+    void Draw() const { _self-&gt;Draw(); }         // 一次虚调用
+};
+</code></pre>
+<p>两件容易写错的事先点出来：</p>
+<ul>
+<li><strong>包装类拷贝</strong>必须深拷贝内部对象，否则两个 <code>AnyDrawable</code> 共用一个 <code>Model&lt;T&gt;</code>，析构时 double free。深拷贝就是靠 <code>Concept::Clone()</code> 这条虚函数。</li>
+<li><strong>模板构造函数</strong>会和拷贝构造起冲突：<code>AnyDrawable(T&amp;&amp;)</code> 在某些重载场景里"看起来"比 <code>AnyDrawable(const AnyDrawable&amp;)</code> 更匹配。完整版要用 <code>std::enable_if</code> 把 <code>T = AnyDrawable</code> 的情况排除掉，把拷贝/移动让给真正的拷贝/移动构造函数。</li>
+</ul>
+<hr />
+<h2>四、一个类型擦除技术的实现范例（C++11+，仅 Concept-Model idiom）</h2>
+<p>下面这份代码可以<strong>原样</strong>拷出来跑，第一行注释里写了编译命令：</p>
+<pre><code class="language-cpp">// 保存为 type_erasure_demo.cpp 后：
+//   g++ -std=c++17 -O2 -Wall -Wextra -o type_erasure_demo type_erasure_demo.cpp
+//   ./type_erasure_demo
+#include &lt;iostream&gt;
+#include &lt;memory&gt;
+#include &lt;type_traits&gt;
+#include &lt;utility&gt;
+#include &lt;vector&gt;
+
+class AnyDrawable {
+private:
+    struct Concept {
+        virtual ~Concept() = default;
+        virtual void Draw() const = 0;
+        virtual std::unique_ptr&lt;Concept&gt; Clone() const = 0;
+    };
+
+    template &lt;typename T&gt;
+    struct Model final : Concept {
+        T _data;
+        explicit Model(T data) : _data(std::move(data)) {}
+        void Draw() const override { _data.Draw(); }
+        std::unique_ptr&lt;Concept&gt; Clone() const override {
+            return std::unique_ptr&lt;Concept&gt;(new Model&lt;T&gt;(_data));
+        }
+    };
+
+    std::unique_ptr&lt;Concept&gt; _self;
+
+public:
+    // 用 enable_if 排除 T = AnyDrawable，避免劫持拷贝/移动构造
+    template &lt;typename T,
+              typename = typename std::enable_if&lt;
+                  !std::is_same&lt;typename std::decay&lt;T&gt;::type,
+                                AnyDrawable&gt;::value&gt;::type&gt;
+    AnyDrawable(T&amp;&amp; data)
+        : _self(new Model&lt;typename std::decay&lt;T&gt;::type&gt;(
+              std::forward&lt;T&gt;(data))) {}
+
+    AnyDrawable(const AnyDrawable&amp; other)
+        : _self(other._self-&gt;Clone()) {
+        std::cout &lt;&lt; &quot;  [copy-ctor: clone via Concept::Clone()]\n&quot;;
+    }
+
+    AnyDrawable(AnyDrawable&amp;&amp; other) noexcept
+        : _self(std::move(other._self)) {
+        std::cout &lt;&lt; &quot;  [move-ctor: pointer transferred]\n&quot;;
+    }
+
+    // copy-and-swap 写法：值传参 + swap，统一处理拷贝赋值与移动赋值
+    AnyDrawable&amp; operator=(AnyDrawable other) noexcept {
+        std::swap(_self, other._self);
+        return *this;
+    }
+
+    ~AnyDrawable() = default;
+
+    void Draw() const { _self-&gt;Draw(); }
+};
+
+// 不继承任何基类：只要有 void Draw() const 就能被装
+struct Circle {
+    double r;
+    void Draw() const { std::cout &lt;&lt; &quot;Circle r=&quot; &lt;&lt; r &lt;&lt; &quot;\n&quot;; }
+};
+
+struct Square {
+    double side;
+    void Draw() const { std::cout &lt;&lt; &quot;Square side=&quot; &lt;&lt; side &lt;&lt; &quot;\n&quot;; }
+};
+
+// 把任意 void() lambda 适配成&quot;有 Draw() 的类型&quot;
+template &lt;typename F&gt;
+struct LambdaShape {
+    F _f;
+    void Draw() const { _f(); }
+};
+
+template &lt;typename F&gt;
+LambdaShape&lt;typename std::decay&lt;F&gt;::type&gt; MakeLambdaShape(F&amp;&amp; f) {
+    return LambdaShape&lt;typename std::decay&lt;F&gt;::type&gt;{std::forward&lt;F&gt;(f)};
+}
+
+int main() {
+    std::vector&lt;AnyDrawable&gt; shapes;
+    shapes.reserve(3);  // 预留容量，避免 emplace_back 触发已有元素的搬迁
+    shapes.emplace_back(Circle{1.5});
+    shapes.emplace_back(Square{2.0});
+    shapes.emplace_back(MakeLambdaShape([] {
+        std::cout &lt;&lt; &quot;lambda triangle\n&quot;;
+    }));
+
+    std::cout &lt;&lt; &quot;--- iterate ---\n&quot;;
+    for (const auto&amp; s : shapes) {
+        s.Draw();
+    }
+
+    std::cout &lt;&lt; &quot;--- copy ---\n&quot;;
+    AnyDrawable a = Circle{3.0};
+    AnyDrawable b = a;        // 走 Concept::Clone()
+    b.Draw();
+
+    std::cout &lt;&lt; &quot;--- move ---\n&quot;;
+    AnyDrawable c = std::move(a);  // 仅转移 _self 指针
+    c.Draw();
+
+    return 0;
+}
+</code></pre>
+<p>跑出来应该是这样：</p>
+<pre><code>--- iterate ---
+Circle r=1.5
+Square side=2
+lambda triangle
+--- copy ---
+  [copy-ctor: clone via Concept::Clone()]
+Circle r=3
+--- move ---
+  [move-ctor: pointer transferred]
+Circle r=3
+</code></pre>
+<p>几个关键点对着代码读：</p>
+<ul>
+<li><strong><code>Circle</code> / <code>Square</code> / <code>LambdaShape</code> 都没继承任何基类</strong>，证明这是非侵入式的。</li>
+<li><code>std::vector&lt;AnyDrawable&gt;</code> 装的是<strong>值</strong>，不是 <code>Shape*</code>；所以容器复制、跨函数传值都按值语义走，不用关心谁负责 <code>delete</code>。</li>
+<li>拷贝构造里那行 <code>[copy-ctor: clone via Concept::Clone()]</code> 证明走的是深拷贝路径——两个 <code>AnyDrawable</code> 各持有一个独立的 <code>Model&lt;Circle&gt;</code>。</li>
+<li>移动构造里那行 <code>[move-ctor: pointer transferred]</code> 证明只动了 <code>_self</code> 指针，没有再 <code>new</code> 一份。</li>
+</ul>
+<p>想自己造一个 <code>std::function</code> 该怎么走？把 <code>Draw()</code> 换成 <code>Invoke(Args...)</code>、再叠 SBO（方案 E），就接近 <code>std::function</code> 的最小骨架了。变参模板和 SBO 不是本文重点，留给读者动手。</p>
+<hr />
+<h2>五、C++98/03 兼容的实现方案与完整范例</h2>
+<p>很多遗留项目卡在 C++98/03，但仍然要做"装不同类型的可绘制对象"这种事；<code>boost::any</code> / <code>boost::function</code> 当年就是在这套约束下落地的。</p>
+<p>下面把 C++11+ 写法搬到 C++98 时，需要<strong>改</strong>的几个点先列清楚，再贴一份完整可跑的源码。</p>
+<h3>1. 与 C++11+ 的核心差异</h3>
+<ul>
+<li><strong>没有 <code>std::unique_ptr</code></strong>：内部用裸指针 <code>Concept*</code>，由包装类的析构 <code>delete</code>。<code>std::auto_ptr</code> 不要碰，所有权转移语义反人类。</li>
+<li><strong>没有移动语义</strong>：只能实现拷贝构造 + <code>operator=</code>；赋值用 <strong>copy-and-swap idiom</strong>——先用 <code>other</code> 构造一个临时对象，再 <code>std::swap</code> 内部指针，旧对象在临时对象析构里被 <code>delete</code> 掉。这套写法<strong>强异常安全</strong>：构造临时对象抛异常时，原对象状态不动。</li>
+<li><strong>没有变参模板 / lambda / <code>nullptr</code> / <code>override</code> / <code>= default</code></strong>：用 <code>0</code> 当空指针、显式实现析构与拷贝、用 functor 替代 lambda；本范例只装一个无参操作 <code>Draw()</code>，不需要变参模板。</li>
+<li><strong>没有 <code>std::move</code></strong>：<code>vector::push_back</code> 必然走拷贝路径，所以 push_back 时会看到额外的"克隆"日志，这是 C++98 的预期行为，不是 bug。</li>
+</ul>
+<h3>2. 完整可编译可运行的范例</h3>
+<pre><code class="language-cpp">// 保存为 type_erasure_legacy.cpp 后：
+//   g++ -std=c++98 -O2 -Wall -Wextra -Wno-deprecated -o type_erasure_legacy type_erasure_legacy.cpp
+//   ./type_erasure_legacy
+#include &lt;algorithm&gt;
+#include &lt;cstddef&gt;
+#include &lt;iostream&gt;
+#include &lt;string&gt;
+#include &lt;vector&gt;
+
+class AnyDrawable {
+private:
+    struct Concept {
+        virtual ~Concept() {}
+        virtual void Draw() const = 0;
+        virtual Concept* Clone() const = 0;
+    };
+
+    template &lt;typename T&gt;
+    struct Model : Concept {
+        T _data;
+        Model(const T&amp; data) : _data(data) {}
+        virtual void Draw() const { _data.Draw(); }
+        virtual Concept* Clone() const { return new Model&lt;T&gt;(*this); }
+    };
+
+    Concept* _self;
+
+public:
+    template &lt;typename T&gt;
+    AnyDrawable(const T&amp; data) : _self(new Model&lt;T&gt;(data)) {}
+
+    AnyDrawable(const AnyDrawable&amp; other) : _self(other._self-&gt;Clone()) {
+        std::cout &lt;&lt; &quot;  [copy-ctor: clone via Concept::Clone()]\n&quot;;
+    }
+
+    // copy-and-swap idiom：构造临时再交换，强异常安全
+    AnyDrawable&amp; operator=(const AnyDrawable&amp; other) {
+        AnyDrawable tmp(other);
+        std::swap(_self, tmp._self);
+        return *this;
+    }
+
+    ~AnyDrawable() { delete _self; }
+
+    void Draw() const { _self-&gt;Draw(); }
+};
+
+struct Circle {
+    double r;
+    Circle(double radius) : r(radius) {}
+    void Draw() const { std::cout &lt;&lt; &quot;Circle r=&quot; &lt;&lt; r &lt;&lt; &quot;\n&quot;; }
+};
+
+struct Square {
+    double side;
+    Square(double s) : side(s) {}
+    void Draw() const { std::cout &lt;&lt; &quot;Square side=&quot; &lt;&lt; side &lt;&lt; &quot;\n&quot;; }
+};
+
+// C++98 没有 lambda，用 functor 替代：只要有 Draw()，仍然能装进 AnyDrawable
+class Stamp {
+public:
+    Stamp(const std::string&amp; name) : _name(name) {}
+    void Draw() const { std::cout &lt;&lt; &quot;Stamp[&quot; &lt;&lt; _name &lt;&lt; &quot;]\n&quot;; }
+private:
+    std::string _name;
+};
+
+int main() {
+    std::vector&lt;AnyDrawable&gt; shapes;
+    shapes.reserve(3);
+
+    std::cout &lt;&lt; &quot;--- push_back: each insert triggers AnyDrawable copy-ctor ---\n&quot;;
+    shapes.push_back(Circle(1.5));
+    shapes.push_back(Square(2.0));
+    shapes.push_back(Stamp(&quot;alpha&quot;));
+
+    std::cout &lt;&lt; &quot;--- iterate ---\n&quot;;
+    for (std::size_t i = 0; i &lt; shapes.size(); ++i) {
+        shapes[i].Draw();
+    }
+
+    std::cout &lt;&lt; &quot;--- copy ---\n&quot;;
+    AnyDrawable a = Circle(3.0);
+    AnyDrawable b = a;
+    b.Draw();
+
+    std::cout &lt;&lt; &quot;--- assign (copy-and-swap) ---\n&quot;;
+    AnyDrawable d = Square(4.0);
+    d = b;  // 走 operator=：构造临时再 swap
+    d.Draw();
+
+    return 0;
+}
+</code></pre>
+<p>跑出来是这样：</p>
+<pre><code>--- push_back: each insert triggers AnyDrawable copy-ctor ---
+  [copy-ctor: clone via Concept::Clone()]
+  [copy-ctor: clone via Concept::Clone()]
+  [copy-ctor: clone via Concept::Clone()]
+--- iterate ---
+Circle r=1.5
+Square side=2
+Stamp[alpha]
+--- copy ---
+  [copy-ctor: clone via Concept::Clone()]
+Circle r=3
+--- assign (copy-and-swap) ---
+  [copy-ctor: clone via Concept::Clone()]
+Circle r=3
+</code></pre>
+<p>读这份输出时注意两点：</p>
+<ul>
+<li>开头三条 <code>[copy-ctor]</code> 是 <code>vector::push_back</code> 把临时 <code>AnyDrawable</code> 拷进存储时触发的——C++98 没有移动，所以<strong>这是正常代价</strong>；C++11+ 的版本用 <code>emplace_back</code> 直接构造，不会有这三行。</li>
+<li><code>--- assign ---</code> 阶段那一条 <code>[copy-ctor]</code> 来自 <code>operator=</code> 内部构造 <code>tmp(other)</code> 时；之后 <code>std::swap</code> 不再分配也不再克隆，旧对象在 <code>tmp</code> 析构里被释放——这就是 copy-and-swap 的安全保证。</li>
+</ul>
+<h3>3. 迁移提示</h3>
+<p>如果项目能升 C++11，按下面三步把这套搬过去就行：</p>
+<ol>
+<li><code>_self</code> 换成 <code>std::unique_ptr&lt;Concept&gt;</code>，析构里的 <code>delete</code> 删掉。</li>
+<li>加上<strong>移动构造</strong>与<strong>移动赋值</strong>（noexcept 版），让 <code>std::vector</code> 在扩容时走移动而非拷贝。</li>
+<li>把 functor 改成 lambda，配一个 <code>LambdaShape</code> 适配器装进来；模板成员构造加 <code>enable_if</code> 排除 <code>T = AnyDrawable</code>。</li>
+</ol>
+<p>写法更短、安全性更好，不止一点。</p>
+<hr />
+<h2>六、小结</h2>
+<table>
+<thead>
+<tr>
+<th>维度</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>核心思想</td>
+<td>把"具体类型"藏在统一接口背后，运行期分发到具体实现</td>
+</tr>
+<tr>
+<td>主流方案</td>
+<td>A. Concept-Model idiom；B. 手写 vtable；C. <code>std::function</code> 组合；D. <code>typeid</code> + 类型化存储；E. SBO（叠加优化）</td>
+</tr>
+<tr>
+<td>应用最广</td>
+<td>方案 A（Concept-Model idiom），<code>boost::any</code> / <code>std::function</code> 的核心层都是它</td>
+</tr>
+<tr>
+<td>优势</td>
+<td>非侵入、值语义、API 稳定、抑制模板膨胀</td>
+</tr>
+<tr>
+<td>代价</td>
+<td>间接调用、可能堆分配；调试不如直接模板直观</td>
+</tr>
+<tr>
+<td>标准库对照</td>
+<td><code>std::function</code>、<code>std::any</code>、<code>std::shared_ptr</code> 的 deleter；C++98 时代对应 <code>boost::any</code>、<code>boost::function</code></td>
+</tr>
+</tbody>
+</table>
+<p>选型口诀：</p>
+<ul>
+<li>默认选 → 方案 A（Concept-Model）；</li>
+<li>关 RTTI / 跨 C ABI → 方案 B；</li>
+<li>玩具实现 → 方案 C；</li>
+<li>"装进去再取出来" → 方案 D；</li>
+<li>想压堆分配抖动 → 在 A/B 上叠方案 E（SBO）。</li>
+</ul>
+<p>老项目卡在 C++98/03 也别慌，第 5 节那套 copy-and-swap 写法能直接搬。能升 C++11 就升 C++11，改三步换来的可读性与安全性都很值。</p>
+    </article>
+</body>
+</html>

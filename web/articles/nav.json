@@ -11,6 +11,10 @@
           "text": "86 条 C/C++ 错误范例"
         },
         {
+          "href": "./page/cpp/type_erasure.html",
+          "text": "C++ 类型擦除：原理、备选方案与从 C++11 到 C++98 的两份参考实现"
+        },
+        {
           "href": "./page/cpp/函数重载覆盖与隐藏.html",
           "text": "C++ 函数：重载、覆盖、隐藏"
         },
