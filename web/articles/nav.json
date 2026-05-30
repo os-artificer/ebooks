@@ -127,6 +127,10 @@
           "text": "什么是 A2A？"
         },
         {
+          "href": "./page/tech-arch/uuid.html",
+          "text": "UUID 深度揭秘：那些隐藏在你 ID 里的敏感信息"
+        },
+        {
           "href": "./page/tech-arch/数据库选型方案.html",
           "text": "2026 数据库选型指南：从 OLTP 到时序一网打尽"
         }
