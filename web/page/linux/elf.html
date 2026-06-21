@@ -1,0 +1,1498 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ELF 文件格式数据结构全解析</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+    </style>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">ELF 文件格式数据结构全解析</h1>
+      <blockquote>
+<p>每个 Linux 平台的开发者肯定会接触到 ELF。它不仅是可执行文件的载体，更是链接、加载、Core Dump、内核模块、vdso 等核心机制的基础。本文将从 Linux 内核源码出发，彻底搞懂 ELF 的数据结构。本文也是我的学习笔记，希望对有缘读到此文的你也有帮助。</p>
+</blockquote>
+<hr />
+<h2>一、什么是 ELF？</h2>
+<p>ELF（Executable and Linkable Format）是 Linux 系统下可执行文件、共享库、目标文件和 Core Dump 的标准格式。它定义了二进制文件中代码、数据、符号、重定位等信息的组织方式。</p>
+<p>Linux 内核（v6.14）中，ELF 的核心数据结构定义在以下文件中：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>include/uapi/linux/elf.h</code></td>
+<td><strong>核心</strong>：所有 ELF 结构体与常量</td>
+</tr>
+<tr>
+<td><code>include/uapi/linux/elf-em.h</code></td>
+<td>支持的机器架构类型</td>
+</tr>
+<tr>
+<td><code>include/linux/elfcore.h</code></td>
+<td>Core Dump 相关结构体</td>
+</tr>
+<tr>
+<td><code>include/linux/elfnote.h</code></td>
+<td>ELF Note 段生成宏</td>
+</tr>
+<tr>
+<td><code>fs/binfmt_elf.c</code></td>
+<td>ELF 可执行文件加载器</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>二、ELF 文件整体布局</h2>
+<p>一个 ELF 文件从宏观上看包含四个逻辑区域：</p>
+<pre><code>+-------------------+
+|   ELF Header      |  文件头，位于文件最开头，描述整体布局
++-------------------+
+|   Program Header  |  程序头表（加载视图），位置由 e_phoff 指定
+|   Table           |
++-------------------+
+|   Section 1       |
+|   Section 2       |  各种节区（链接视图）
+|   ...             |
++-------------------+
+|   Section Header  |  节区头表，位置由 e_shoff 指定
+|   Table           |
++-------------------+
+</code></pre>
+<blockquote>
+<p>注意：Program Header Table 和 Section Header Table 在文件中的位置并不固定，而是由 ELF Header 中的 <code>e_phoff</code> 和 <code>e_shoff</code> 字段分别指定，因此上图中的相对顺序仅是一种典型布局。</p>
+</blockquote>
+<ul>
+<li><strong>链接视图</strong>（Section）：供编译器和链接器使用</li>
+<li><strong>加载视图</strong>（Segment/Program Header）：供内核加载器使用</li>
+</ul>
+<p>同一个文件，编译时看 Section，运行时看 Segment。</p>
+<hr />
+<h2>三、ELF 基础类型</h2>
+<p>ELF 规范定义了 32 位和 64 位两套基础类型：</p>
+<pre><code class="language-c">/* 32-bit ELF base types */
+typedef __u32  Elf32_Addr;    // 地址
+typedef __u16  Elf32_Half;    // 半字
+typedef __u32  Elf32_Off;     // 文件偏移
+typedef __s32  Elf32_Sword;   // 有符号字
+typedef __u32  Elf32_Word;    // 无符号字
+
+/* 64-bit ELF base types */
+typedef __u64  Elf64_Addr;
+typedef __u16  Elf64_Half;
+typedef __s16  Elf64_SHalf;
+typedef __u64  Elf64_Off;
+typedef __s32  Elf64_Sword;
+typedef __u32  Elf64_Word;
+typedef __u64  Elf64_Xword;   // 64位字
+typedef __s64  Elf64_Sxword;  // 有符号64位字
+</code></pre>
+<blockquote>
+<p><strong>关键差异</strong>：64 位增加了 <code>Xword</code>/<code>Sxword</code> 类型，地址和偏移都扩展到了 8 字节。</p>
+</blockquote>
+<hr />
+<h2>四、ELF Header —— 文件头</h2>
+<p>ELF Header 是文件的"身份证"，位于文件最开始，描述了整个文件的基本信息。</p>
+<h3>4.1 e_ident —— 魔数与身份标识</h3>
+<p>文件头的前 16 个字节是 <code>e_ident[]</code>，其索引定义如下：</p>
+<pre><code class="language-c">#define EI_NIDENT   16
+
+#define EI_MAG0     0   // 魔数第1字节: 0x7f
+#define EI_MAG1     1   // 魔数第2字节: 'E'
+#define EI_MAG2     2   // 魔数第3字节: 'L'
+#define EI_MAG3     3   // 魔数第4字节: 'F'
+#define EI_CLASS    4   // 文件类别: 32位/64位
+#define EI_DATA     5   // 字节序: 小端/大端
+#define EI_VERSION  6   // ELF 版本
+#define EI_OSABI    7   // 目标操作系统 ABI
+#define EI_PAD      8   // 填充字节起始
+</code></pre>
+<p>魔数定义：</p>
+<pre><code class="language-c">#define ELFMAG0     0x7f
+#define ELFMAG1     'E'
+#define ELFMAG2     'L'
+#define ELFMAG3     'F'
+#define ELFMAG      &quot;\177ELF&quot;
+#define SELFMAG     4
+</code></pre>
+<blockquote>
+<p>用 <code>readelf -h</code> 看到的文件头，开头就是 <code>7f 45 4c 46</code>，正是 <code>\x7fELF</code>。</p>
+</blockquote>
+<p><strong>EI_CLASS 取值</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>ELFCLASSNONE</code></td>
+<td>无效</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>ELFCLASS32</code></td>
+<td>32 位 ELF</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>ELFCLASS64</code></td>
+<td>64 位 ELF</td>
+</tr>
+</tbody>
+</table>
+<p><strong>EI_DATA 取值</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>ELFDATANONE</code></td>
+<td>无效</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>ELFDATA2LSB</code></td>
+<td>小端字节序</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>ELFDATA2MSB</code></td>
+<td>大端字节序</td>
+</tr>
+</tbody>
+</table>
+<p><strong>EI_VERSION 取值</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>EV_NONE</code></td>
+<td>无效</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>EV_CURRENT</code></td>
+<td>当前版本</td>
+</tr>
+</tbody>
+</table>
+<p><strong>EI_OSABI 取值</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>ELFOSABI_NONE</code></td>
+<td>无/UNIX System V</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>ELFOSABI_LINUX</code></td>
+<td>Linux</td>
+</tr>
+</tbody>
+</table>
+<h3>4.2 Elf32_Ehdr / Elf64_Ehdr 结构体</h3>
+<pre><code class="language-c">typedef struct elf32_hdr {
+    unsigned char e_ident[EI_NIDENT];  // 魔数 + 标识信息
+    Elf32_Half    e_type;              // 文件类型
+    Elf32_Half    e_machine;           // 目标架构
+    Elf32_Word    e_version;           // 版本号
+    Elf32_Addr    e_entry;             // 入口点虚拟地址
+    Elf32_Off     e_phoff;             // Program Header 表偏移
+    Elf32_Off     e_shoff;             // Section Header 表偏移
+    Elf32_Word    e_flags;             // 架构相关标志
+    Elf32_Half    e_ehsize;            // ELF Header 大小
+    Elf32_Half    e_phentsize;         // 每个 Program Header 大小
+    Elf32_Half    e_phnum;             // Program Header 数量
+    Elf32_Half    e_shentsize;         // 每个 Section Header 大小
+    Elf32_Half    e_shnum;             // Section Header 数量
+    Elf32_Half    e_shstrndx;          // 节区名字符串表索引
+} Elf32_Ehdr;
+
+typedef struct elf64_hdr {
+    unsigned char e_ident[EI_NIDENT];
+    Elf64_Half    e_type;
+    Elf64_Half    e_machine;
+    Elf64_Word    e_version;
+    Elf64_Addr    e_entry;
+    Elf64_Off     e_phoff;
+    Elf64_Off     e_shoff;
+    Elf64_Word    e_flags;
+    Elf64_Half    e_ehsize;
+    Elf64_Half    e_phentsize;
+    Elf64_Half    e_phnum;
+    Elf64_Half    e_shentsize;
+    Elf64_Half    e_shnum;
+    Elf64_Half    e_shstrndx;
+} Elf64_Ehdr;
+</code></pre>
+<blockquote>
+<p>32 位和 64 位的 Header 结构体在逻辑上完全一致，只是字段宽度不同。64 位中 <code>e_entry</code>、<code>e_phoff</code>、<code>e_shoff</code> 都是 8 字节。</p>
+</blockquote>
+<h3>4.3 e_type —— 文件类型</h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>ET_NONE</code></td>
+<td>未知类型</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>ET_REL</code></td>
+<td>可重定位文件（<code>.o</code>）</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>ET_EXEC</code></td>
+<td>可执行文件</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>ET_DYN</code></td>
+<td>共享目标文件（<code>.so</code>）</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>ET_CORE</code></td>
+<td>Core Dump 文件</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>现代 Linux 下，位置无关可执行文件（PIE）的 <code>e_type</code> 也是 <code>ET_DYN</code>，和 <code>.so</code> 一样。</p>
+</blockquote>
+<h3>4.4 e_machine —— 目标架构</h3>
+<p>架构常量定义在 <code>include/uapi/linux/elf-em.h</code> 中：</p>
+<pre><code class="language-c">#define EM_NONE        0    // 无
+#define EM_386         3    // Intel 80386
+#define EM_ARM         40   // ARM 32位
+#define EM_X86_64      62   // AMD x86-64
+#define EM_AARCH64     183  // ARM 64位
+#define EM_RISCV       243  // RISC-V
+#define EM_LOONGARCH   258  // LoongArch
+#define EM_MIPS        8    // MIPS
+#define EM_PPC         20   // PowerPC
+#define EM_PPC64       21   // PowerPC64
+#define EM_S390        22   // IBM S/390
+#define EM_PARISC      15   // HP PA-RISC
+#define EM_SPARC       2    // SPARC
+#define EM_SPARCV9     43   // SPARC v9 64-bit
+#define EM_OPENRISC    92   // OpenRISC
+#define EM_BPF         247  // Linux BPF
+#define EM_ALPHA       0x9026
+// ... 共40+种架构
+</code></pre>
+<h3>4.5 扩展编号机制</h3>
+<p>当 Program Header 数量超过或等于 65535（0xffff）时，使用扩展编号机制：</p>
+<pre><code class="language-c">#define PN_XNUM  0xffff
+</code></pre>
+<p>此时，<code>e_phnum</code> 字段设置为 <code>PN_XNUM</code>，真实的 Program Header 数量存储在 Section Header 表第 0 项的 <code>sh_info</code> 字段中。</p>
+<p>对于 <code>e_shnum</code> 的超额，真实的 Section Header 数量则存储在 Section Header 表第 0 项的 <code>sh_size</code> 中。</p>
+<p>如果 Program/Section Header 数量未超额，Section Header 表第 0 项应为零初始化（若存在）。</p>
+<hr />
+<h2>五、Program Header —— 程序头表</h2>
+<p>Program Header 描述的是<strong>加载视图</strong>，告诉内核如何将文件中的段映射到进程地址空间。</p>
+<h3>5.1 Elf32_Phdr / Elf64_Phdr 结构体</h3>
+<pre><code class="language-c">typedef struct elf32_phdr {
+    Elf32_Word p_type;    // 段类型
+    Elf32_Off  p_offset;  // 在文件中的偏移
+    Elf32_Addr p_vaddr;   // 虚拟地址
+    Elf32_Addr p_paddr;   // 物理地址
+    Elf32_Word p_filesz;  // 在文件中的大小
+    Elf32_Word p_memsz;   // 在内存中的大小
+    Elf32_Word p_flags;   // 权限标志
+    Elf32_Word p_align;   // 对齐要求
+} Elf32_Phdr;
+
+typedef struct elf64_phdr {
+    Elf64_Word  p_type;    // 段类型
+    Elf64_Word  p_flags;   // 权限标志
+    Elf64_Off   p_offset;  // 在文件中的偏移
+    Elf64_Addr  p_vaddr;   // 虚拟地址
+    Elf64_Addr  p_paddr;   // 物理地址
+    Elf64_Xword p_filesz;  // 在文件中的大小
+    Elf64_Xword p_memsz;   // 在内存中的大小
+    Elf64_Xword p_align;   // 对齐要求
+} Elf64_Phdr;
+</code></pre>
+<blockquote>
+<p>注意 64 位 Phdr 的字段顺序与 32 位不同：<code>p_flags</code> 被提到了 <code>p_offset</code> 前面。</p>
+</blockquote>
+<h3>5.2 p_type —— 段类型</h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>PT_NULL</code></td>
+<td>未使用</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>PT_LOAD</code></td>
+<td>可加载段</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>PT_DYNAMIC</code></td>
+<td>动态链接信息</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>PT_INTERP</code></td>
+<td>解释器路径</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>PT_NOTE</code></td>
+<td>附加信息</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>PT_SHLIB</code></td>
+<td>保留</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>PT_PHDR</code></td>
+<td>程序头表自身</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>PT_TLS</code></td>
+<td>线程局部存储</td>
+</tr>
+</tbody>
+</table>
+<p><strong>GNU 扩展类型</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PT_GNU_EH_FRAME</code></td>
+<td>异常处理帧（<code>.eh_frame_hdr</code>）</td>
+</tr>
+<tr>
+<td><code>PT_GNU_STACK</code></td>
+<td>栈是否可执行</td>
+</tr>
+<tr>
+<td><code>PT_GNU_RELRO</code></td>
+<td>重定位只读区域</td>
+</tr>
+<tr>
+<td><code>PT_GNU_PROPERTY</code></td>
+<td>GNU 属性（如 CET、BTI）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>范围定义</strong>：</p>
+<pre><code class="language-c">#define PT_LOOS    0x60000000   // OS 特定段起始
+#define PT_HIOS    0x6fffffff   // OS 特定段结束
+#define PT_LOPROC  0x70000000   // 处理器特定段起始
+#define PT_HIPROC  0x7fffffff   // 处理器特定段结束
+</code></pre>
+<h3>5.3 p_flags —— 段权限</h3>
+<pre><code class="language-c">#define PF_X  0x1   // 可执行
+#define PF_W  0x2   // 可写
+#define PF_R  0x4   // 可读
+</code></pre>
+<p>组合示例：</p>
+<table>
+<thead>
+<tr>
+<th>组合</th>
+<th>含义</th>
+<th>典型段</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>PF_R + PF_X</code> (5)</td>
+<td>读+执行</td>
+<td><code>.text</code></td>
+</tr>
+<tr>
+<td><code>PF_R + PF_W</code> (6)</td>
+<td>读+写</td>
+<td><code>.data</code></td>
+</tr>
+<tr>
+<td><code>PF_R</code> (4)</td>
+<td>只读</td>
+<td><code>.rodata</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>六、Section Header —— 节区头表</h2>
+<p>Section Header 描述的是<strong>链接视图</strong>，供编译器和链接器使用。</p>
+<h3>6.1 Elf32_Shdr / Elf64_Shdr 结构体</h3>
+<pre><code class="language-c">typedef struct elf32_shdr {
+    Elf32_Word sh_name;       // 节区名（字符串表索引）
+    Elf32_Word sh_type;       // 节区类型
+    Elf32_Word sh_flags;      // 节区标志
+    Elf32_Addr sh_addr;       // 虚拟地址
+    Elf32_Off  sh_offset;     // 文件偏移
+    Elf32_Word sh_size;       // 节区大小
+    Elf32_Word sh_link;       // 关联节区索引
+    Elf32_Word sh_info;       // 额外信息
+    Elf32_Word sh_addralign;  // 对齐要求
+    Elf32_Word sh_entsize;    // 固定表项大小时的表项大小
+} Elf32_Shdr;
+
+typedef struct elf64_shdr {
+    Elf64_Word  sh_name;
+    Elf64_Word  sh_type;
+    Elf64_Xword sh_flags;
+    Elf64_Addr  sh_addr;
+    Elf64_Off   sh_offset;
+    Elf64_Xword sh_size;
+    Elf64_Word  sh_link;
+    Elf64_Word  sh_info;
+    Elf64_Xword sh_addralign;
+    Elf64_Xword sh_entsize;
+} Elf64_Shdr;
+</code></pre>
+<h3>6.2 sh_type —— 节区类型</h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>SHT_NULL</code></td>
+<td>无效节区</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>SHT_PROGBITS</code></td>
+<td>程序数据（代码、数据等）</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>SHT_SYMTAB</code></td>
+<td>符号表</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>SHT_STRTAB</code></td>
+<td>字符串表</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>SHT_RELA</code></td>
+<td>带加数的重定位表</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>SHT_HASH</code></td>
+<td>符号哈希表</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>SHT_DYNAMIC</code></td>
+<td>动态链接信息</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>SHT_NOTE</code></td>
+<td>注释信息</td>
+</tr>
+<tr>
+<td>8</td>
+<td><code>SHT_NOBITS</code></td>
+<td>占位（不占文件空间，如 <code>.bss</code>）</td>
+</tr>
+<tr>
+<td>9</td>
+<td><code>SHT_REL</code></td>
+<td>不带加数的重定位表</td>
+</tr>
+<tr>
+<td>10</td>
+<td><code>SHT_SHLIB</code></td>
+<td>保留</td>
+</tr>
+<tr>
+<td>11</td>
+<td><code>SHT_DYNSYM</code></td>
+<td>动态符号表</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>SHT_NUM</code></td>
+<td>已定义类型数</td>
+</tr>
+</tbody>
+</table>
+<p>范围定义：</p>
+<pre><code class="language-c">#define SHT_LOPROC  0x70000000   // 处理器特定
+#define SHT_HIPROC  0x7fffffff
+#define SHT_LOUSER  0x80000000   // 用户自定义
+#define SHT_HIUSER  0xffffffff
+</code></pre>
+<h3>6.3 sh_flags —— 节区标志</h3>
+<pre><code class="language-c">#define SHF_WRITE           0x1          // 可写
+#define SHF_ALLOC           0x2          // 运行时占用内存
+#define SHF_EXECINSTR       0x4          // 可执行指令
+#define SHF_RELA_LIVEPATCH  0x00100000   // 内核热补丁相关
+#define SHF_RO_AFTER_INIT   0x00200000   // 初始化后只读
+#define SHF_MASKPROC        0xf0000000   // 处理器特定掩码
+</code></pre>
+<blockquote>
+<p><code>SHF_ALLOC</code> 是区分"链接时使用"和"运行时使用"的关键标志。没有此标志的节区在加载后不占内存。</p>
+</blockquote>
+<h3>6.4 特殊节区索引</h3>
+<pre><code class="language-c">#define SHN_UNDEF       0       // 未定义/未关联
+#define SHN_LORESERVE   0xff00  // 保留索引起始
+#define SHN_LOPROC      0xff00  // 处理器特定起始
+#define SHN_HIPROC      0xff1f  // 处理器特定结束
+#define SHN_LIVEPATCH   0xff20  // 内核热补丁
+#define SHN_ABS         0xfff1  // 绝对值（不受重定位影响）
+#define SHN_COMMON      0xfff2  // 公共块
+#define SHN_HIRESERVE   0xffff  // 保留索引结束
+</code></pre>
+<hr />
+<h2>七、符号表 —— Symbol Table</h2>
+<p>符号表记录了文件中所有符号（函数、变量等）的名称、类型、绑定属性。</p>
+<h3>7.1 Elf32_Sym / Elf64_Sym 结构体</h3>
+<pre><code class="language-c">typedef struct elf32_sym {
+    Elf32_Word    st_name;   // 符号名（字符串表索引）
+    Elf32_Addr    st_value;  // 符号值（地址/偏移）
+    Elf32_Word    st_size;   // 符号大小
+    unsigned char st_info;   // 类型 + 绑定属性
+    unsigned char st_other;  // 可见性信息（低2位为STV_*标志）
+    Elf32_Half    st_shndx;  // 所在节区索引
+} Elf32_Sym;
+
+typedef struct elf64_sym {
+    Elf64_Word    st_name;
+    unsigned char st_info;
+    unsigned char st_other;  // 可见性信息（低2位为STV_*标志）
+    Elf64_Half    st_shndx;
+    Elf64_Addr    st_value;
+    Elf64_Xword   st_size;
+} Elf64_Sym;
+</code></pre>
+<blockquote>
+<p>64 位 Sym 的字段顺序与 32 位不同，<code>st_value</code> 和 <code>st_size</code> 被移到了最后。</p>
+</blockquote>
+<h3>7.2 st_info 解析</h3>
+<pre><code class="language-c">#define ELF_ST_BIND(x)  ((x) &gt;&gt; 4)      // 高4位：绑定属性
+#define ELF_ST_TYPE(x)  ((x) &amp; 0xf)     // 低4位：符号类型
+</code></pre>
+<p><strong>绑定属性（STB_）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>STB_LOCAL</code></td>
+<td>局部符号（外部不可见）</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>STB_GLOBAL</code></td>
+<td>全局符号</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>STB_WEAK</code></td>
+<td>弱符号（可被同名全局符号覆盖）</td>
+</tr>
+</tbody>
+</table>
+<p><strong>符号类型（STT_）</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>STT_NOTYPE</code></td>
+<td>未指定类型</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>STT_OBJECT</code></td>
+<td>数据对象（变量）</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>STT_FUNC</code></td>
+<td>函数</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>STT_SECTION</code></td>
+<td>节区</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>STT_FILE</code></td>
+<td>源文件名</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>STT_COMMON</code></td>
+<td>公共块</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>STT_TLS</code></td>
+<td>线程局部存储</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2>八、重定位表 —— Relocation</h2>
+<p>重定位表告诉链接器或动态加载器如何修改代码/数据中的地址引用。</p>
+<h3>8.1 Rel（隐式加数）与 Rela（显式加数）</h3>
+<pre><code class="language-c">// 不带显式加数的重定位项
+typedef struct elf32_rel {
+    Elf32_Addr r_offset;  // 需要重定位的位置
+    Elf32_Word r_info;    // 符号索引 + 重定位类型
+} Elf32_Rel;
+
+typedef struct elf64_rel {
+    Elf64_Addr  r_offset;
+    Elf64_Xword r_info;
+} Elf64_Rel;
+
+// 带显式加数的重定位项
+typedef struct elf32_rela {
+    Elf32_Addr  r_offset;
+    Elf32_Word  r_info;
+    Elf32_Sword r_addend;   // 显式加数
+} Elf32_Rela;
+
+typedef struct elf64_rela {
+    Elf64_Addr   r_offset;
+    Elf64_Xword  r_info;
+    Elf64_Sxword r_addend;
+} Elf64_Rela;
+</code></pre>
+<h3>8.2 r_info 解析</h3>
+<pre><code class="language-c">// 32位
+#define ELF32_R_SYM(x)  ((x) &gt;&gt; 8)      // 符号索引（高24位）
+#define ELF32_R_TYPE(x) ((x) &amp; 0xff)    // 重定位类型（低8位）
+
+// 64位
+#define ELF64_R_SYM(i)  ((i) &gt;&gt; 32)     // 符号索引（高32位）
+#define ELF64_R_TYPE(i) ((i) &amp; 0xffffffff)  // 重定位类型（低32位）
+</code></pre>
+<blockquote>
+<p>x86-64 下常见的重定位类型包括 <code>R_X86_64_PC32</code>（32位PC相对）、<code>R_X86_64_PLT32</code>（PLT调用）等，这些在各架构的 <code>asm/elf.h</code> 中定义。</p>
+</blockquote>
+<hr />
+<h2>九、动态段 —— Dynamic Section</h2>
+<p><code>.dynamic</code> 段是动态链接的核心，包含动态链接器需要的信息。</p>
+<h3>9.1 Elf32_Dyn / Elf64_Dyn 结构体</h3>
+<pre><code class="language-c">typedef struct {
+    Elf32_Sword d_tag;
+    union {
+        Elf32_Sword d_val;
+        Elf32_Addr  d_ptr;
+    } d_un;
+} Elf32_Dyn;
+
+typedef struct {
+    Elf64_Sxword d_tag;
+    union {
+        Elf64_Xword d_val;
+        Elf64_Addr  d_ptr;
+    } d_un;
+} Elf64_Dyn;
+</code></pre>
+<p>每个 <code>d_tag</code> 表示一种信息类型，<code>d_un</code> 根据类型不同，解释为数值或地址。</p>
+<h3>9.2 常用 d_tag 取值</h3>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>宏</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>0</td>
+<td><code>DT_NULL</code></td>
+<td>结束标记</td>
+</tr>
+<tr>
+<td>1</td>
+<td><code>DT_NEEDED</code></td>
+<td>依赖的共享库名</td>
+</tr>
+<tr>
+<td>2</td>
+<td><code>DT_PLTRELSZ</code></td>
+<td>PLT 重定位总大小</td>
+</tr>
+<tr>
+<td>3</td>
+<td><code>DT_PLTGOT</code></td>
+<td>PLT/GOT 地址</td>
+</tr>
+<tr>
+<td>4</td>
+<td><code>DT_HASH</code></td>
+<td>符号哈希表地址</td>
+</tr>
+<tr>
+<td>5</td>
+<td><code>DT_STRTAB</code></td>
+<td>字符串表地址</td>
+</tr>
+<tr>
+<td>6</td>
+<td><code>DT_SYMTAB</code></td>
+<td>符号表地址</td>
+</tr>
+<tr>
+<td>7</td>
+<td><code>DT_RELA</code></td>
+<td>Rela 重定位表地址</td>
+</tr>
+<tr>
+<td>12</td>
+<td><code>DT_INIT</code></td>
+<td>初始化函数地址</td>
+</tr>
+<tr>
+<td>13</td>
+<td><code>DT_FINI</code></td>
+<td>终止函数地址</td>
+</tr>
+<tr>
+<td>14</td>
+<td><code>DT_SONAME</code></td>
+<td>共享库自身的 SONAME</td>
+</tr>
+<tr>
+<td>15</td>
+<td><code>DT_RPATH</code></td>
+<td>库搜索路径（已废弃）</td>
+</tr>
+<tr>
+<td>17</td>
+<td><code>DT_REL</code></td>
+<td>Rel 重定位表地址</td>
+</tr>
+<tr>
+<td>21</td>
+<td><code>DT_DEBUG</code></td>
+<td>调试信息（供 debugger 使用）</td>
+</tr>
+<tr>
+<td>22</td>
+<td><code>DT_TEXTREL</code></td>
+<td>代码段需要重定位</td>
+</tr>
+<tr>
+<td>23</td>
+<td><code>DT_JMPREL</code></td>
+<td>仅 PLT 的重定位表</td>
+</tr>
+</tbody>
+</table>
+<p><strong>范围定义</strong>：</p>
+<pre><code class="language-c">#define DT_LOOS       0x6000000d   // OS 特定
+#define DT_HIOS       0x6ffff000
+#define DT_LOPROC     0x70000000   // 处理器特定
+#define DT_HIPROC     0x7fffffff
+</code></pre>
+<hr />
+<h2>十、ELF Note —— 注释段</h2>
+<p>Note 段用于在 ELF 文件中嵌入元数据，如 GNU 属性、内核版本信息、Core Dump 寄存器数据等。</p>
+<h3>10.1 Elf32_Nhdr / Elf64_Nhdr 结构体</h3>
+<pre><code class="language-c">typedef struct elf32_note {
+    Elf32_Word n_namesz;  // Name 长度（含 '\0'）
+    Elf32_Word n_descsz;  // 描述数据长度
+    Elf32_Word n_type;    // Note 类型
+} Elf32_Nhdr;
+
+typedef struct elf64_note {
+    Elf64_Word n_namesz;
+    Elf64_Word n_descsz;
+    Elf64_Word n_type;
+} Elf64_Nhdr;
+</code></pre>
+<p>Note 在文件中的布局为：</p>
+<pre><code>+----------+----------+----------+-----------+-----------+
+| n_namesz | n_descsz | n_type   | name...   | desc...   |
++----------+----------+----------+-----------+-----------+
+  4 bytes     4 bytes    4 bytes   变长(4对齐)  变长(4对齐)
+</code></pre>
+<blockquote>
+<p>32 位和 64 位的 Note Header 结构体大小完全相同——三个字段都是 <code>Elf32/64_Word</code>（4 字节），因此 Note Header 始终为 12 字节。</p>
+</blockquote>
+<h3>10.2 Note 类型（n_type）</h3>
+<p><strong>Core Dump 相关（Name="CORE" 或 "LINUX"）</strong>：</p>
+<pre><code class="language-c">#define NT_PRSTATUS     1         // 进程状态（寄存器等）
+#define NT_PRFPREG      2         // 浮点寄存器
+#define NT_PRPSINFO     3         // 进程信息
+#define NT_TASKSTRUCT   4         // 任务结构体
+#define NT_AUXV         6         // 辅助向量
+#define NT_SIGINFO      0x53494749
+#define NT_FILE         0x46494c45
+</code></pre>
+<p><strong>GNU 属性（Name="GNU"）</strong>：</p>
+<pre><code class="language-c">#define NT_GNU_PROPERTY_TYPE_0  5
+</code></pre>
+<h3>10.3 内核中的 Note 生成宏</h3>
+<p>内核提供了便利宏来生成 Note，定义在 <code>include/linux/elfnote.h</code>：</p>
+<pre><code class="language-c">// C 代码中使用
+ELFNOTE32(&quot;LINUX&quot;, NT_PRSTATUS, my_prstatus_data);
+ELFNOTE64(&quot;GNU&quot;, NT_GNU_PROPERTY_TYPE_0, property_data);
+</code></pre>
+<hr />
+<h2>十一、Core Dump 结构体</h2>
+<p>Linux 内核在生成 Core Dump 时，使用以下结构体来描述进程状态：</p>
+<pre><code class="language-c">struct elf_siginfo {
+    int si_signo;   // 信号编号
+    int si_code;    // 信号代码
+    int si_errno;   // 错误号
+};
+
+struct elf_prstatus {
+    struct elf_prstatus_common common;  // 通用进程信息
+    elf_gregset_t pr_reg;               // 通用寄存器
+    int pr_fpvalid;                     // 是否使用了数学协处理器
+};
+
+struct elf_prpsinfo {
+    char  pr_state;                     // 进程状态
+    char  pr_sname;                     // 状态缩写
+    char  pr_zomb;                      // 僵尸标志
+    char  pr_nice;                      // Nice 值
+    unsigned long pr_flag;              // 标志
+    __kernel_uid_t pr_uid;              // UID
+    __kernel_gid_t pr_gid;              // GID
+    pid_t pr_pid, pr_ppid, pr_pgrp, pr_sid;
+    char  pr_fname[16];                 // 可执行文件名
+    char  pr_psargs[ELF_PRARGSZ];       // 命令行参数
+};
+</code></pre>
+<hr />
+<h2>十二、内核 ELF 加载流程</h2>
+<p><code>fs/binfmt_elf.c</code> 是内核加载 ELF 可执行文件的核心代码。</p>
+<p>加载过程概述：</p>
+<ol>
+<li><strong>验证魔数</strong>：检查文件前 4 字节是否为 <code>\x7fELF</code></li>
+<li><strong>解析 ELF Header</strong>：读取 <code>e_type</code>、<code>e_machine</code>、<code>e_entry</code> 等</li>
+<li><strong>解析 Program Headers</strong>：遍历所有 <code>PT_LOAD</code> 段</li>
+<li><strong>映射段到内存</strong>：通过 <code>elf_map()</code> 将段映射到用户空间</li>
+<li><strong>加载解释器</strong>（如为动态链接）：加载 <code>PT_INTERP</code> 指定的 <code>ld-linux.so</code></li>
+<li><strong>设置栈</strong>：初始化辅助向量（AT_*）和环境变量</li>
+<li><strong>跳转到入口点</strong>：<code>e_entry</code> 或解释器入口</li>
+</ol>
+<hr />
+<h2>总结</h2>
+<table>
+<thead>
+<tr>
+<th>概念</th>
+<th>结构体</th>
+<th>核心作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>文件头</td>
+<td><code>Elf32/64_Ehdr</code></td>
+<td>描述文件整体布局</td>
+</tr>
+<tr>
+<td>程序头</td>
+<td><code>Elf32/64_Phdr</code></td>
+<td>加载视图，内存映射</td>
+</tr>
+<tr>
+<td>节区头</td>
+<td><code>Elf32/64_Shdr</code></td>
+<td>链接视图，编译链接</td>
+</tr>
+<tr>
+<td>符号表</td>
+<td><code>Elf32/64_Sym</code></td>
+<td>函数/变量符号信息</td>
+</tr>
+<tr>
+<td>重定位</td>
+<td><code>Elf32/64_Rel</code> / <code>Rela</code></td>
+<td>地址修正信息</td>
+</tr>
+<tr>
+<td>动态段</td>
+<td><code>Elf32/64_Dyn</code></td>
+<td>动态链接信息</td>
+</tr>
+<tr>
+<td>Note</td>
+<td><code>Elf32/64_Nhdr</code></td>
+<td>元数据/调试信息</td>
+</tr>
+</tbody>
+</table>
+<p>理解这些数据结构，是深入理解 Linux 程序加载、动态链接、调试等机制的基础。建议配合 <code>readelf</code> 和 <code>objdump</code> 工具，在实际的二进制文件上验证这些结构体。</p>
+<hr />
+<h2>实战：亲手解剖一个 ELF 文件</h2>
+<p>理论知识再多，不如亲手操刀解剖一次。下面我们写一个最简单的 Hello World 程序，然后用 <code>readelf</code> 把它的 ELF 结构一层层剥开。</p>
+<h3>12.1 准备样本</h3>
+<pre><code class="language-c">// hello.c
+#include &lt;stdio.h&gt;
+
+int main(void)
+{
+    printf(&quot;Hello, ELF!\n&quot;);
+    return 0;
+}
+</code></pre>
+<p>编译（保留二进制，不剥离符号）：</p>
+<pre><code class="language-bash">gcc -o hello hello.c
+</code></pre>
+<h3>12.2 ELF Header——第一眼</h3>
+<pre><code class="language-bash">$ readelf -h hello
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              DYN (Position-Independent Executable file)
+  Machine:                           Advanced Micro Devices X86-64
+  Version:                           0x1
+  Entry point address:               0x1060
+  Start of program headers:          64 (bytes into file)
+  Start of section headers:          13976 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           56 (bytes)
+  Number of program headers:         13
+  Size of section headers:           64 (bytes)
+  Number of section headers:         31
+  Section header string table index: 30
+</code></pre>
+<blockquote>
+<p><strong>提示</strong>：具体的地址和偏移值会因编译器版本、编译选项而异。本文实验环境为 GCC 14.2.1，你在自己机器上复现时数值可能略有不同，但结构完全一致。</p>
+</blockquote>
+<p>逐一解读：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Magic</td>
+<td><code>7f 45 4c 46</code></td>
+<td>ELF 魔数，ASCII 即 <code>\x7fELF</code></td>
+</tr>
+<tr>
+<td>Class</td>
+<td>ELF64</td>
+<td>64 位文件（<code>ELFCLASS64</code> = 2）</td>
+</tr>
+<tr>
+<td>Data</td>
+<td>小端</td>
+<td>x86 使用小端字节序（<code>ELFDATA2LSB</code> = 1）</td>
+</tr>
+<tr>
+<td>Type</td>
+<td>DYN</td>
+<td>动态链接的可执行文件（<code>ET_DYN</code> = 3）。现代 Linux 发行版默认编译为 PIE</td>
+</tr>
+<tr>
+<td>Machine</td>
+<td>X86-64</td>
+<td>AMD64 架构（<code>EM_X86_64</code> = 62）</td>
+</tr>
+<tr>
+<td>Entry</td>
+<td>0x1060</td>
+<td>入口地址，即 <code>_start</code> 的位置</td>
+</tr>
+<tr>
+<td>e_phoff</td>
+<td>64</td>
+<td>程序头表紧跟在 ELF Header 后面（64 = sizeof(Elf64_Ehdr)）</td>
+</tr>
+<tr>
+<td>e_phentsize</td>
+<td>56</td>
+<td>每个 Phdr 56 字节，对应 <code>sizeof(Elf64_Phdr)</code></td>
+</tr>
+<tr>
+<td>e_phnum</td>
+<td>13</td>
+<td>共 13 个段</td>
+</tr>
+<tr>
+<td>e_shentsize</td>
+<td>64</td>
+<td>每个 Shdr 64 字节，对应 <code>sizeof(Elf64_Shdr)</code></td>
+</tr>
+<tr>
+<td>e_shnum</td>
+<td>31</td>
+<td>共 31 个节区</td>
+</tr>
+</tbody>
+</table>
+<h3>12.3 Program Headers——内核视角</h3>
+<pre><code class="language-bash">$ readelf -l hello
+
+Elf file type is DYN (Position-Independent Executable file)
+Entry point 0x1060
+There are 13 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset             VirtAddr           PhysAddr
+                 FileSiz            MemSiz              Flags  Align
+  PHDR           0x0000000000000040 0x0000000000000040 0x0000000000000040
+                 0x00000000000002d8 0x00000000000002d8  R      0x8
+  INTERP         0x0000000000000318 0x0000000000000318 0x0000000000000318
+                 0x000000000000001c 0x000000000000001c  R      0x1
+      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
+  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000628 0x0000000000000628  R      0x1000
+  LOAD           0x0000000000001000 0x0000000000001000 0x0000000000001000
+                 0x0000000000000175 0x0000000000000175  R E    0x1000
+  LOAD           0x0000000000002000 0x0000000000002000 0x0000000000002000
+                 0x00000000000000f4 0x00000000000000f4  R      0x1000
+  LOAD           0x0000000000002db8 0x0000000000003db8 0x0000000000003db8
+                 0x0000000000000258 0x0000000000000260  RW     0x1000
+  DYNAMIC        0x0000000000002dc8 0x0000000000003dc8 0x0000000000003dc8
+                 0x00000000000001f0 0x00000000000001f0  RW     0x8
+  NOTE           0x0000000000000338 0x0000000000000338 0x0000000000000338
+                 0x0000000000000030 0x0000000000000030  R      0x8
+  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000000 0x0000000000000000  RW     0x10
+  GNU_RELRO      0x0000000000002db8 0x0000000000003db8 0x0000000000003db8
+                 0x0000000000000248 0x0000000000000248  R      0x1
+  ...
+</code></pre>
+<p>关键发现：</p>
+<ul>
+<li><strong>PHDR</strong>：程序头表本身，位于文件偏移 0x40（即紧跟 ELF Header 之后）</li>
+<li><strong>INTERP</strong>：指定动态链接器 <code>/lib64/ld-linux-x86-64.so.2</code></li>
+<li><strong>LOAD × 4</strong>：四个加载段，分别是：</li>
+<li>只读段（R）：ELF Header + 只读数据，大小 0x628</li>
+<li>代码段（R E）：<code>.text</code> 等，地址 0x1000，大小 0x175</li>
+<li>只读数据段（R）：<code>.rodata</code>、<code>.eh_frame</code> 等，大小 0xf4</li>
+<li>读写段（RW）：<code>.data</code> + <code>.bss</code> + <code>.got</code>，注意 <code>MemSiz(0x260) &gt; Filesz(0x258)</code>——多出的 8 字节就是 <code>.bss</code> 段在内存中的空间</li>
+<li><strong>GNU_STACK</strong>：标记栈不可执行（<code>RW</code> 无 <code>E</code>），这是 NX 安全机制</li>
+<li><strong>GNU_RELRO</strong>：标记重定位只读区域，加载后立即 <code>mprotect</code> 为只读，防止 GOT 覆写攻击</li>
+</ul>
+<p>这里能直观看到前面文章讲的 <strong>"FileSiz vs MemSiz"</strong>——最后一个 LOAD 段的 <code>FileSiz=0x258</code>，<code>MemSiz=0x260</code>，多出的 8 字节就是 <code>.bss</code> 段在内存中的空间。</p>
+<h3>12.4 Section Headers——链接器视角</h3>
+<pre><code class="language-bash">$ readelf -S hello
+There are 31 section headers, starting at offset 0x3698:
+
+Section Headers:
+  [Nr] Name              Type             Address           Offset
+       Size              EntSize          Flags  Link  Info  Align
+  [ 0]                   NULL             0000000000000000  00000000
+       0000000000000000  0000000000000000           0     0     0
+  [ 1] .interp           PROGBITS         0000000000000318  00000318
+       000000000000001c  0000000000000000   A       0     0     1
+  [ 2] .note.gnu.pr[...] NOTE             0000000000000338  00000338
+       0000000000000030  0000000000000000   A       0     0     8
+  [ 3] .note.gnu.bu[...] NOTE             0000000000000368  00000368
+       0000000000000024  0000000000000000   A       0     0     4
+  [ 4] .note.ABI-tag     NOTE             000000000000038c  0000038c
+       0000000000000020  0000000000000000   A       0     0     4
+  [ 5] .gnu.hash         GNU_HASH         00000000000003b0  000003b0
+       0000000000000024  0000000000000000   A       6     0     8
+  [ 6] .dynsym           DYNSYM           00000000000003d8  000003d8
+       00000000000000a8  0000000000000018   A       7     1     8
+  [ 7] .dynstr           STRTAB           0000000000000480  00000480
+       000000000000008d  0000000000000000   A       0     0     1
+  ...
+  [16] .text             PROGBITS         0000000000001060  00001060
+       0000000000000107  0000000000000000  AX       0     0     16
+  [17] .fini             PROGBITS         0000000000001168  00001168
+       000000000000000d  0000000000000000  AX       0     0     4
+  [18] .rodata           PROGBITS         0000000000002000  00002000
+       0000000000000010  0000000000000000   A       0     0     4
+  ...
+  [25] .data             PROGBITS         0000000000004000  00003000
+       0000000000000010  0000000000000000  WA       0     0     8
+  [26] .bss              NOBITS           0000000000004010  00003010
+       0000000000000008  0000000000000000  WA       0     0     1
+  ...
+</code></pre>
+<p>对照本文第 4 章：</p>
+<table>
+<thead>
+<tr>
+<th>节区</th>
+<th>sh_type</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>.interp</code></td>
+<td>PROGBITS(1)</td>
+<td>解释器路径字符串</td>
+</tr>
+<tr>
+<td><code>.dynsym</code></td>
+<td>DYNSYM(11)</td>
+<td>动态符号表，<code>EntSize=24</code> = <code>sizeof(Elf64_Sym)</code></td>
+</tr>
+<tr>
+<td><code>.dynstr</code></td>
+<td>STRTAB(3)</td>
+<td>动态字符串表</td>
+</tr>
+<tr>
+<td><code>.text</code></td>
+<td>PROGBITS(1)</td>
+<td>代码段，Flags <code>AX</code> = 可分配+可执行</td>
+</tr>
+<tr>
+<td><code>.rodata</code></td>
+<td>PROGBITS(1)</td>
+<td>只读数据（我们的字符串 <code>"Hello, ELF!\n"</code> 就在这里）</td>
+</tr>
+<tr>
+<td><code>.data</code></td>
+<td>PROGBITS(1)</td>
+<td>已初始化全局变量，Flags <code>WA</code> = 可写+可分配</td>
+</tr>
+<tr>
+<td><code>.bss</code></td>
+<td>NOBITS(8)</td>
+<td>未初始化全局变量，不占文件空间</td>
+</tr>
+</tbody>
+</table>
+<p><strong>亮点</strong>：<code>.text</code> 的地址 0x1060 正是 ELF Header 中 <code>e_entry</code> 的值——入口点就落在 <code>.text</code> 段的起始位置。</p>
+<h3>12.5 符号表——函数和变量从哪来</h3>
+<pre><code class="language-bash">$ readelf -s hello
+
+Symbol table '.dynsym' contains 7 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+     0: 0000000000000000     0 NOTYPE  LOCAL  DEFAULT  UND
+     1: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND __libc_start[...]@GLIBC_2.34 (2)
+     2: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_deregisterT[...]
+     3: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND puts@GLIBC_2.2.5 (3)
+     4: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND __gmon_start__
+     5: 0000000000000000     0 NOTYPE  WEAK   DEFAULT  UND _ITM_registerTMC[...]
+     6: 0000000000000000     0 FUNC    WEAK   DEFAULT  UND __cxa_finalize@GLIBC_2.2.5 (3)
+
+Symbol table '.symtab' contains 36 entries:
+   Num:    Value          Size Type    Bind   Vis      Ndx Name
+    29: 0000000000001060    38 FUNC    GLOBAL DEFAULT   16 _start
+    31: 0000000000001149    30 FUNC    GLOBAL DEFAULT   16 main
+    21: 0000000000000000     0 FUNC    GLOBAL DEFAULT  UND puts@GLIBC_2.2.5
+</code></pre>
+<p>解读：</p>
+<ul>
+<li><strong><code>.dynsym</code></strong>（动态符号表）有 7 个条目，除第 0 个保留条目外全是 UND（未定义）——这些都是需要动态链接器解析的外部符号</li>
+<li><strong><code>.symtab</code></strong>（完整符号表）有 36 个条目，其中 <code>main</code> 在索引 31（<code>.text</code> 节区），Value 为 0x1149，Size 为 30 字节；<code>_start</code> 在 0x1060，即 ELF 入口点</li>
+<li>注意：<code>.dynsym</code> 中调用的是 <code>puts</code> 而非 <code>printf</code>——这是因为编译器发现我们的 <code>printf</code> 调用没有格式化参数，自动优化成了 <code>puts</code>。这正是编译器优化的一种体现</li>
+<li><code>puts</code> 的 Ndx 为 UND——它定义在 libc.so 中，需要运行时解析</li>
+</ul>
+<p>对照第 7 章的结构体：</p>
+<pre><code>Elf64_Sym 中：
+  st_name  → 符号名字符串在 .dynstr/.strtab 中的偏移
+  st_info  → 高 4 位 = STB_GLOBAL(1)，低 4 位 = STT_FUNC(2)
+  st_value → main 的地址 = 0x1149
+  st_size  → main 的大小 = 30 字节
+  st_shndx → 16（.text 节区）
+</code></pre>
+<h3>12.6 重定位表——地址怎么填</h3>
+<pre><code class="language-bash">$ readelf -r hello
+
+Relocation section '.rela.dyn' at offset 0x550 contains 8 entries:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000003db8  000000000008 R_X86_64_RELATIVE                    1140
+000000003dc0  000000000008 R_X86_64_RELATIVE                    1100
+000000004008  000000000008 R_X86_64_RELATIVE                    4008
+000000003fd8  000100000006 R_X86_64_GLOB_DAT 0000000000000000 __libc_start_main@GLIBC_2.34 + 0
+...
+
+Relocation section '.rela.plt' at offset 0x610 contains 1 entry:
+  Offset          Info           Type           Sym. Value    Sym. Name + Addend
+000000003fd0  000300000007 R_X86_64_JUMP_SLO 0000000000000000 puts@GLIBC_2.2.5 + 0
+</code></pre>
+<p>关键发现：</p>
+<ul>
+<li><strong><code>.rela.dyn</code></strong>：8 个重定位，包含 3 个相对重定位（<code>R_X86_64_RELATIVE</code>，运行时加基址即可）和 5 个 GLOB_DAT（全局数据符号，如 <code>__libc_start_main</code>）</li>
+<li><strong><code>.rela.plt</code></strong>：PLT 重定位，只有 1 条——<code>puts</code>（编译器将 <code>printf("Hello, ELF!\n")</code> 优化成了 <code>puts</code>）。Offset <code>0x3fd0</code> 就是 GOT 表中 <code>puts</code> 条目的地址，动态链接器首次调用时填充真实地址</li>
+</ul>
+<p>对照第 8 章 <code>Elf64_Rela</code> 结构体：</p>
+<pre><code>r_offset = 0x3fd0    → 需要修正的 GOT 条目地址
+r_info   = 0x300000007
+  → 低 32 位 = 7 = R_X86_64_JUMP_SLOT
+  → 高 32 位 = 3 = .dynsym 中 puts 的符号索引
+r_addend = 0          → 加数
+</code></pre>
+<h3>12.7 动态段——运行时依赖</h3>
+<pre><code class="language-bash">$ readelf -d hello
+
+Dynamic section at offset 0x2dc8 contains 27 entries:
+  Tag        Type                         Name/Value
+ 0x0000000000000001 (NEEDED)             Shared library: [libc.so.6]
+ 0x000000000000000c (INIT)               0x1000
+ 0x000000000000000d (FINI)               0x1168
+ 0x0000000000000019 (INIT_ARRAY)         0x3db8
+ 0x000000000000001b (INIT_ARRAYSZ)       8 (bytes)
+ 0x000000000000001a (FINI_ARRAY)         0x3dc0
+ 0x000000000000001c (FINI_ARRAYSZ)       8 (bytes)
+ 0x000000006ffffef5 (GNU_HASH)           0x3b0
+ 0x0000000000000005 (STRTAB)             0x480
+ 0x0000000000000006 (SYMTAB)             0x3d8
+ 0x000000000000000a (STRSZ)              141 (bytes)
+ 0x000000000000000b (SYMENT)             24 (bytes)
+ 0x0000000000000003 (PLTGOT)             0x3fb8
+ 0x0000000000000002 (PLTRELSZ)           24 (bytes)
+ 0x0000000000000014 (PLTREL)             RELA
+ 0x0000000000000017 (JMPREL)             0x610
+ 0x0000000000000007 (RELA)               0x550
+ 0x0000000000000008 (RELASZ)             192 (bytes)
+ 0x0000000000000009 (RELAENT)            24 (bytes)
+ 0x000000000000001e (FLAGS)              BIND_NOW
+ 0x000000006ffffffb (FLAGS_1)            Flags: NOW PIE
+ 0x000000006ffffffe (VERNEED)            0x520
+ 0x000000006fffffff (VERNEEDNUM)         1
+ 0x000000006ffffff0 (VERSYM)             0x50e
+ 0x000000006ffffff9 (RELACOUNT)          3
+ 0x0000000000000000 (NULL)               0x0
+</code></pre>
+<p>对照第 9 章的 <code>d_tag</code> 表格：</p>
+<table>
+<thead>
+<tr>
+<th>Tag</th>
+<th>常量</th>
+<th>值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>NEEDED</td>
+<td><code>DT_NEEDED</code> = 1</td>
+<td><code>libc.so.6</code></td>
+<td>依赖的共享库</td>
+</tr>
+<tr>
+<td>STRTAB</td>
+<td><code>DT_STRTAB</code> = 5</td>
+<td>0x480</td>
+<td>动态字符串表地址</td>
+</tr>
+<tr>
+<td>SYMTAB</td>
+<td><code>DT_SYMTAB</code> = 6</td>
+<td>0x3d8</td>
+<td>动态符号表地址（即 <code>.dynsym</code>）</td>
+</tr>
+<tr>
+<td>SYMENT</td>
+<td><code>DT_SYMENT</code> = 11</td>
+<td>24</td>
+<td>每个符号 24 字节 = <code>sizeof(Elf64_Sym)</code></td>
+</tr>
+<tr>
+<td>PLTGOT</td>
+<td><code>DT_PLTGOT</code> = 3</td>
+<td>0x3fb8</td>
+<td>GOT 表地址</td>
+</tr>
+<tr>
+<td>JMPREL</td>
+<td><code>DT_JMPREL</code> = 23</td>
+<td>0x610</td>
+<td>PLT 重定位表地址（即 <code>.rela.plt</code>）</td>
+</tr>
+</tbody>
+</table>
+<h3>12.8 Note 段——ABI 标签</h3>
+<pre><code class="language-bash">$ readelf -n hello
+
+Displaying notes found in: .note.gnu.property
+  Owner                Data size        Description
+  GNU                  0x00000020       NT_GNU_PROPERTY_TYPE_0
+      Properties: x86 feature: IBT, SHSTK
+        x86 ISA needed: x86-64-baseline
+
+Displaying notes found in: .note.gnu.build-id
+  Owner                Data size        Description
+  GNU                  0x00000014       NT_GNU_BUILD_ID
+    Build ID: 8f8343d771373842a7bf84c89b49a203d239fb71
+
+Displaying notes found in: .note.ABI-tag
+  Owner                Data size        Description
+  GNU                  0x00000010       NT_GNU_ABI_TAG
+    OS: Linux, ABI: 3.2.0
+</code></pre>
+<p>对照第 10 章：</p>
+<ul>
+<li><code>NT_GNU_PROPERTY_TYPE_0</code> = 5，包含 CPU 特性（Intel CET 的 IBT 和 SHSTK），以及 ISA 要求</li>
+<li><code>NT_GNU_BUILD_ID</code> = 3，编译时生成的唯一标识（每次编译都不同，你的值会不一样）</li>
+<li><code>NT_GNU_ABI_TAG</code> = 1，记录编译时的内核 ABI 版本（这里显示最低要求 Linux 3.2.0）</li>
+<li>Note Header 12 字节 + name（"GNU\0"，4 字节对齐）+ desc 数据</li>
+</ul>
+<h3>12.9 二进制层面的手动验证</h3>
+<p>用 <code>xxd</code> 直接查看 ELF Header 的前 64 字节：</p>
+<pre><code class="language-bash">$ xxd -l 64 hello
+00000000: 7f45 4c46 0201 0100 0000 0000 0000 0000  .ELF............
+00000010: 0300 3e00 0100 0000 6010 0000 0000 0000  ..&gt;.....`.......
+00000020: 4000 0000 0000 0000 9836 0000 0000 0000  @........6......
+00000030: 0000 0000 4000 3800 0d00 4000 1f00 1e00  ....@.8...@.....
+</code></pre>
+<p>对照 <code>Elf64_Ehdr</code> 逐字节解析：</p>
+<pre><code>偏移  字节            字段              值
+0x00  7f 45 4c 46     e_ident[EI_MAG]    ELF 魔数
+0x04  02              e_ident[EI_CLASS]   ELFCLASS64
+0x05  01              e_ident[EI_DATA]    ELFDATA2LSB（小端）
+0x06  01              e_ident[EI_VERSION] EV_CURRENT
+0x07  00              e_ident[EI_OSABI]   ELFOSABI_NONE
+0x10  0300            e_type              ET_DYN (3)，小端表示
+0x12  3e00            e_machine           EM_X86_64 (62 = 0x3E)
+0x18  6010 0000 0000 0000  e_entry       0x1060
+0x20  4000 0000 0000 0000  e_phoff       0x40 = 64
+0x28  9836 0000 0000 0000  e_shoff       0x3698 = 13976
+0x34  4000            e_ehsize           0x40 = 64
+0x36  3800            e_phentsize        0x38 = 56
+0x38  0d00            e_phnum            0x0D = 13
+0x3A  4000            e_shentsize        0x40 = 64
+0x3C  1f00            e_shnum            0x1F = 31
+0x3E  1e00            e_shstrndx         0x1E = 30
+</code></pre>
+<h3>12.10 完整结构映射图</h3>
+<p>把以上信息拼在一起，Hello World 程序的完整 ELF 布局就一目了然：</p>
+<pre><code>文件偏移         内存地址          内容                    所属 Segment   所属 Section
+────────         ────────          ────                    ────────────   ───────────
+0x0000 ┌────┐   0x0000 ┌────┐    ELF Header              LOAD(R)        (无)
+0x0040 │    │           │    │    Program Header Table    PHDR+LOAD(R)   (无)
+0x0318 │    │           │    │    &quot;.interp&quot; 字符串        INTERP+LOAD(R) .interp
+0x0338 │    │           │    │    Note 段                 NOTE+LOAD(R)   .note.*
+0x03b0 │    │           │    │    .gnu.hash               LOAD(R)        .gnu.hash
+0x03d8 │    │           │    │    .dynsym                 LOAD(R)        .dynsym
+0x0480 │    │           │    │    .dynstr                 LOAD(R)        .dynstr
+       │    │           │    │    ... 更多只读数据 ...
+0x1000 ├────┤   0x1000 ├────┤  ── LOAD(R E) 边界 ──
+0x1060 │    │           │    │    _start / main 入口!     LOAD(R E)      .text
+0x1168 │    │           │    │    _fini                   LOAD(R E)      .fini
+0x2000 ├────┤   0x2000 ├────┤  ── LOAD(R) 边界 ──
+0x2000 │    │           │    │    &quot;Hello, ELF!\n&quot;         LOAD(R)        .rodata
+       │    │           │    │    ... 只读数据 ...
+0x2db8 ├────┤   0x3db8 ├────┤  ── LOAD(RW) 边界 ──
+0x2dc8 │    │           │    │    .dynamic                LOAD(RW)       .dynamic
+0x2fb8 │    │           │    │    .got                    LOAD(RW)       .got
+0x3000 │    │           │    │    .data                    LOAD(RW)       .data
+0x3010 │    │           │    │    .bss (文件不占空间!)      LOAD(RW)       .bss
+       └────┘           └────┘
+                            │    │
+                            │    │ 0x4018  ── 内存结束（.bss 之后）
+</code></pre>
+<blockquote>
+<p>注意：文件偏移和虚拟地址在第一个 LOAD 段中相同（p_offset = p_vaddr = 0），但从 RW 段开始两者不同——文件偏移 0x2db8 映射到虚拟地址 0x3db8。这正是 <code>p_offset</code> 和 <code>p_vaddr</code> 的区别。</p>
+</blockquote>
+<h3>12.11 小结</h3>
+<p>通过这个 Hello World 程序的完整解剖，我们把前面 11 章讲的所有结构体都"摸"了一遍：</p>
+<ol>
+<li><code>Elf64_Ehdr</code> 告诉我们入口在哪、程序头/节区头在哪</li>
+<li><code>Elf64_Phdr</code> 把文件映射成 4 个内存段，内核据此完成 <code>mmap</code></li>
+<li><code>Elf64_Shdr</code> 组织了 31 个节区，链接器据此完成符号解析</li>
+<li><code>Elf64_Sym</code> 记录了 <code>main</code> 和 <code>puts</code> 的符号信息</li>
+<li><code>Elf64_Rela</code> 告诉动态链接器：<code>puts</code> 的地址需要填入 GOT</li>
+<li><code>Elf64_Dyn</code> 串联了动态链接的全部依赖</li>
+<li><code>Elf64_Nhdr</code> 记录了编译时的 ABI 属性</li>
+</ol>
+<p>纸上得来终觉浅，绝知此事要躬行。建议你也用 <code>readelf</code> 对你手头的任意 ELF 文件做一次这样的解剖，你会发现那些看似枯燥的结构体定义，每一个字节都在真实地工作着。</p>
+<hr />
+<p><em>本文基于 Linux v6.14 内核源码编写，数据结构和常量定义均来自 <code>include/uapi/linux/elf.h</code> 及关联头文件。</em></p>
+    </article>
+</body>
+</html>

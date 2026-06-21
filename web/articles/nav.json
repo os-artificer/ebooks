@@ -95,6 +95,10 @@
       "summaryClass": "nav-category--linux",
       "items": [
         {
+          "href": "./page/linux/elf.html",
+          "text": "ELF 文件格式数据结构全解析"
+        },
+        {
           "href": "./page/linux/fork-deep-dive.html",
           "text": "深入 Linux 内核：一次 fork() 调用，内核到底做了什么？"
         },
