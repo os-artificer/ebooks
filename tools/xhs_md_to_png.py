@@ -88,7 +88,7 @@ def _xhs_download_file(url: str, dest: Path) -> None:
         dest.write_bytes(resp.read())
 
 
-_SYSTEM_FONT_DIR = Path("/usr/share/fonts/truetype/xhs-cache")
+_SYSTEM_FONT_DIR = Path.home() / ".local" / "share" / "fonts" / "xhs-cache"
 
 
 def ensure_xhs_font_cache() -> Path:
