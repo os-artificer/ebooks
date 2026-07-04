@@ -1,5 +1,5 @@
 /**
- * os-artificer 技术圈 — 站点主样式表
+ * Artificer老王的学习笔记 — 站点主样式表
  * 位于 style/，供仓库根目录 index.html 引用
  */
 
@@ -188,7 +188,7 @@ body {
     overflow: hidden;
 }
 
-.nav-group > summary {
+.nav-group>summary {
     list-style: none;
     cursor: pointer;
     user-select: none;
@@ -202,18 +202,18 @@ body {
     gap: 0.5rem;
 }
 
-.nav-group > summary::-webkit-details-marker {
+.nav-group>summary::-webkit-details-marker {
     display: none;
 }
 
-.nav-group > summary::after {
+.nav-group>summary::after {
     content: "▸";
     font-size: 0.65rem;
     opacity: 0.9;
     transition: transform 0.15s ease;
 }
 
-.nav-group[open] > summary::after {
+.nav-group[open]>summary::after {
     transform: rotate(90deg);
 }
 
@@ -248,9 +248,7 @@ body {
     padding: 0.35rem 0.25rem 0.5rem;
     background: #f9fafb;
     /* 仅展示约 5 条标题高度（含 ul 内边距，border-box 下总高度） */
-    max-height: calc(
-        var(--nav-articles-visible) * var(--nav-article-row-height) + 0.35rem + 0.5rem
-    );
+    max-height: calc(var(--nav-articles-visible) * var(--nav-article-row-height) + 0.35rem + 0.5rem);
     overflow-x: hidden;
     overflow-y: auto;
     overscroll-behavior: contain;
@@ -308,7 +306,7 @@ body {
     align-items: center;
 }
 
-.nav-contact__row + .nav-contact__row {
+.nav-contact__row+.nav-contact__row {
     margin-top: 0.4rem;
 }
 
