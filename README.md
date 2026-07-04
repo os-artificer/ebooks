@@ -25,6 +25,23 @@ python3 tools/publish_article.py
 
 文章发布时会自动更新导航栏：`web/articles/nav.json`。
 
+# 如何编译示例代码？
+文章涉及的示例代码统一存放在 `src` 目录下，按语言分为 `src/c` 和 `src/cpp`。
+``` shell
+# 一键编译所有（C + C++）
+cd src && make
+
+# 仅编译 C 代码
+cd src && make c
+
+# 仅编译 C++ 代码
+cd src && make cpp
+
+# 清理所有编译产物
+cd src && make clean
+```
+编译产物分别输出到 `src/c/bin/` 和 `src/cpp/bin/`。
+
 # 项目运行效果
 ![ebooks](./web/images/ebooks.png)
 
