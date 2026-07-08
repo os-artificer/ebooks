@@ -63,6 +63,10 @@
       "summaryClass": "nav-category--go",
       "items": [
         {
+          "href": "./page/golang/go-build-flag-tag.html",
+          "text": "Go build flags 实战：7 个场景掌握构建期控制"
+        },
+        {
           "href": "./page/golang/safe-package-panic-recovery-in-depth.html",
           "text": "Go 生产级 Panic 防护实战：从一个 safe 包看防御性编程的艺术"
         },
