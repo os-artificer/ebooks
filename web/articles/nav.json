@@ -63,6 +63,10 @@
       "summaryClass": "nav-category--go",
       "items": [
         {
+          "href": "./page/golang/cgo.html",
+          "text": "深入浅出 CGO：Go 与 C 互操作原理与实践"
+        },
+        {
           "href": "./page/golang/go-build-flag-tag.html",
           "text": "Go build flags 实战：7 个场景掌握构建期控制"
         },
