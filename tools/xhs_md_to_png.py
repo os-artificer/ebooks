@@ -37,6 +37,9 @@ def _playwright_chromium_launch_kwargs() -> dict:
             return {"headless": True, "executable_path": str(chrome)}
     return {"headless": True}
 DEFAULT_XHS_ROOT = REPO_ROOT / "xhs"
+# Max content-image height: 1080×1920 (9:16) — native for 抖音/视频号, works for 小红书.
+# Slices exceeding this are auto-paginated into multiple images for mobile readability.
+MAX_IMAGE_HEIGHT_DEFAULT = 1920
 DRAFT_CPP = REPO_ROOT / "drafts" / "cpp"
 DRAFT_GOLANG = REPO_ROOT / "drafts" / "golang"
 DRAFT_STL = REPO_ROOT / "drafts" / "stl"
@@ -547,12 +550,119 @@ def render_cover_png(
     page.locator(".wrap").screenshot(path=str(out_path), type="png")
 
 
+def _render_and_measure(page, font_tag: str, chunk_lines: list[str]) -> int:
+    """Render chunk lines as HTML in the page; return scroll height in px."""
+    chunk = "\n".join(chunk_lines)
+    body = md_to_html_fragment(chunk)
+    full_html = HTML_TEMPLATE.format(body=body).replace("__XHS_LOCAL_FONTS__", font_tag)
+    page.set_content(full_html, wait_until="load", timeout=120_000)
+    page.evaluate("() => document.fonts.ready")
+    return page.evaluate(
+        "() => Math.max(400, Math.ceil(document.documentElement.scrollHeight))"
+    )
+
+
+def _find_safe_split(lines_chunk: list[str], prefer_idx: int) -> int:
+    """Find a 1-based line index near *prefer_idx* to split the chunk.
+
+    A split after line *j* is safe when:
+    - all ``` fences are balanced (is_root_level_after_line), and
+    - the right chunk does not start with a table row (``|``) to avoid broken tables.
+
+    Prefers boundary lines (blank, heading, hr, ```).
+    Returns 0 if no safe split is found.
+    """
+    n = len(lines_chunk)
+    if n <= 1:
+        return 0
+
+    def is_safe(j: int) -> bool:
+        if not is_root_level_after_line(lines_chunk, j):
+            return False
+        # Don't leave the right chunk starting with a table data row.
+        if j < n and lines_chunk[j].strip().startswith("|"):
+            return False
+        return True
+
+    def is_boundary(j: int) -> bool:
+        s = lines_chunk[j - 1].strip()
+        if not s:
+            return True
+        if s.startswith("#"):
+            return True
+        if s in ("---", "***", "___"):
+            return True
+        if s.startswith("```"):
+            return True
+        return False
+
+    # Search outward from prefer_idx for a boundary that is safe.
+    for radius in range(n):
+        for cand in (prefer_idx - radius, prefer_idx + radius):
+            if 1 <= cand < n and is_boundary(cand) and is_safe(cand):
+                return cand
+    # Fallback: any safe point near prefer_idx.
+    for radius in range(n):
+        for cand in (prefer_idx - radius, prefer_idx + radius):
+            if 1 <= cand < n and is_safe(cand):
+                return cand
+    return 0
+
+
+def _render_chunk_paginated(
+    page,
+    font_tag: str,
+    lines_chunk: list[str],
+    out_dir: Path,
+    img_index: int,
+    max_height: int,
+) -> int:
+    """Render a chunk to PNG(s), auto-splitting when height exceeds *max_height*.
+
+    Returns the updated (incremented) image index.
+    """
+    if not lines_chunk:
+        return img_index
+
+    h = _render_and_measure(page, font_tag, lines_chunk)
+
+    if h <= max_height or len(lines_chunk) <= 1:
+        page.set_viewport_size({"width": 1080, "height": min(h, 32_000)})
+        img_index += 1
+        png_path = out_dir / f"{img_index:02d}.png"
+        page.locator("body").screenshot(path=str(png_path), type="png")
+        print(png_path, flush=True)
+        return img_index
+
+    # Too tall — split at a safe boundary near the midpoint and recurse.
+    mid = len(lines_chunk) // 2
+    split_j = _find_safe_split(lines_chunk, mid)
+
+    if split_j == 0:
+        # No safe split (e.g. one giant code block / table); render as-is.
+        page.set_viewport_size({"width": 1080, "height": min(h, 32_000)})
+        img_index += 1
+        png_path = out_dir / f"{img_index:02d}.png"
+        page.locator("body").screenshot(path=str(png_path), type="png")
+        print(png_path, flush=True)
+        return img_index
+
+    img_index = _render_chunk_paginated(
+        page, font_tag, lines_chunk[:split_j], out_dir, img_index, max_height
+    )
+    img_index = _render_chunk_paginated(
+        page, font_tag, lines_chunk[split_j:], out_dir, img_index, max_height
+    )
+    return img_index
+
+
 def render_pngs(
     md_path: Path,
     out_dir: Path,
     line_slices: list[tuple[int, int]],
     lang_label: str,
     write_cover: bool,
+    max_height: int = MAX_IMAGE_HEIGHT_DEFAULT,
 ) -> None:
     lines = md_path.read_text(encoding="utf-8").splitlines()
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -562,21 +672,12 @@ def render_pngs(
         page = browser.new_page(viewport={"width": 1080, "height": 600})
         font_tag = xhs_local_font_faces_style()
 
-        for i, (a, b) in enumerate(line_slices, start=1):
-            chunk = "\n".join(lines[a - 1 : b])
-            body = md_to_html_fragment(chunk)
-            full_html = HTML_TEMPLATE.format(body=body).replace(
-                "__XHS_LOCAL_FONTS__", font_tag
+        img_index = 0
+        for a, b in line_slices:
+            chunk_lines = lines[a - 1 : b]
+            img_index = _render_chunk_paginated(
+                page, font_tag, chunk_lines, out_dir, img_index, max_height
             )
-            page.set_content(full_html, wait_until="load", timeout=120_000)
-            page.evaluate("() => document.fonts.ready")
-            h = page.evaluate(
-                "() => Math.max(400, Math.ceil(document.documentElement.scrollHeight))"
-            )
-            page.set_viewport_size({"width": 1080, "height": min(h, 32_000)})
-            png_path = out_dir / f"{i:02d}.png"
-            page.locator("body").screenshot(path=str(png_path), type="png")
-            print(png_path, flush=True)
 
         if write_cover:
             title = extract_poster_title(lines)
@@ -750,8 +851,16 @@ def run_one(
     slices: list[tuple[int, int]],
     lang_label: str,
     write_cover: bool,
+    max_height: int = MAX_IMAGE_HEIGHT_DEFAULT,
 ) -> None:
-    render_pngs(md_path, out_dir, slices, lang_label=lang_label, write_cover=write_cover)
+    render_pngs(
+        md_path,
+        out_dir,
+        slices,
+        lang_label=lang_label,
+        write_cover=write_cover,
+        max_height=max_height,
+    )
 
 
 def main() -> None:
@@ -810,6 +919,13 @@ def main() -> None:
         default=55,
         help="Approx max lines per image in auto mode (default: 55)",
     )
+    parser.add_argument(
+        "--max-height",
+        type=int,
+        default=MAX_IMAGE_HEIGHT_DEFAULT,
+        help=f"Max content-image height in px (default: {MAX_IMAGE_HEIGHT_DEFAULT}, "
+        "9:16 for 抖音/视频号/小红书). Taller slices auto-split for mobile readability.",
+    )
     args = parser.parse_args()
 
     write_cover = not args.no_cover
@@ -831,7 +947,14 @@ def main() -> None:
                 slices = auto_slices(lines, max_lines=max(20, args.max_lines))
             label = lang_label_for_path(md_path)
             print(f"\n== {md_path} -> {out_dir}", flush=True)
-            run_one(md_path, out_dir, slices, lang_label=label, write_cover=write_cover)
+            run_one(
+                md_path,
+                out_dir,
+                slices,
+                lang_label=label,
+                write_cover=write_cover,
+                max_height=args.max_height,
+            )
         return
 
     if args.markdown is None or not args.markdown.is_file():
@@ -862,6 +985,7 @@ def main() -> None:
         slices,
         lang_label=lang_label_for_path(args.markdown),
         write_cover=write_cover,
+        max_height=args.max_height,
     )
 
 
