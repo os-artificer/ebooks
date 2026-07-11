@@ -11,6 +11,9 @@
       a{color:#2563eb;text-decoration:none;}
       a:hover{text-decoration:underline;}
       img{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
       table{border-collapse:collapse;}
       th,td{border:1px solid #d1d5db;padding:6px 10px;}
       th{background:#f9fafb;}
@@ -36,15 +39,19 @@
 <h3>为什么要三次握手？</h3>
 <p>先看一个生活中的类比：</p>
 <blockquote>
-<p>你打电话给朋友：
-- <strong>你说</strong>："喂，能听到我说话吗？"（第一次）
-- <strong>朋友说</strong>："能听到，你能听到我吗？"（第二次）
-- <strong>你说</strong>："能听到了！"（第三次）</p>
+<p>你打电话给朋友：</p>
+<ul>
+<li><strong>你说</strong>："喂，能听到我说话吗？"（第一次）</li>
+<li><strong>朋友说</strong>："能听到，你能听到我吗？"（第二次）</li>
+<li><strong>你说</strong>："能听到了！"（第三次）</li>
+</ul>
 </blockquote>
-<p><strong>三次确认</strong>，双方都确信：
-- 我能发消息给你 ✅
-- 我能收到你的消息 ✅
-- 你也能收到我的消息 ✅</p>
+<p><strong>三次确认</strong>，双方都确信：</p>
+<ul>
+<li>我能发消息给你 ✅</li>
+<li>我能收到你的消息 ✅</li>
+<li>你也能收到我的消息 ✅</li>
+</ul>
 <p>如果是两次握手会怎样？</p>
 <pre><code>CLIENT: &quot;我能听到你吗？&quot;
 Server:  &quot;我能收到你了！&quot;
@@ -178,10 +185,12 @@ IP 127.0.0.1.8080 &gt; 127.0.0.1.54321: Flags [S.], seq 987654321, ack 123456790
 # 第三次握手
 IP 127.0.0.1.54321 &gt; 127.0.0.1.8080: Flags [.], ack 987654322
 </code></pre>
-<p><strong>关键字解释</strong>：
-- <code>[S]</code> = SYN（同步标志）
-- <code>[S.]</code> = SYN+ACK（同步+确认）
-- <code>[.]</code> = ACK（纯确认，无数据）</p>
+<p><strong>关键字解释</strong>：</p>
+<ul>
+<li><code>[S]</code> = SYN（同步标志）</li>
+<li><code>[S.]</code> = SYN+ACK（同步+确认）</li>
+<li><code>[.]</code> = ACK（纯确认，无数据）</li>
+</ul>
 <h3>握手时的选项协商</h3>
 <p>三次握手不只是"打招呼"，还会交换很多重要参数：</p>
 <table>
@@ -223,10 +232,12 @@ IP 127.0.0.1.54321 &gt; 127.0.0.1.8080: Flags [.], ack 987654322
 <p>连接建立后，TCP 开始传输数据。
 但网络是不可靠的——数据包可能丢失、乱序、重复。</p>
 <p><strong>TCP 如何保证"可靠"？</strong></p>
-<p>核心机制有三个：
-1. <strong>序列号与确认应答</strong>（保证有序、不丢）
-2. <strong>滑动窗口流量控制</strong>（防止发送方发太快）
-3. <strong>拥塞控制</strong>（防止把网络搞堵了）</p>
+<p>核心机制有三个：</p>
+<ol>
+<li><strong>序列号与确认应答</strong>（保证有序、不丢）</li>
+<li><strong>滑动窗口流量控制</strong>（防止发送方发太快）</li>
+<li><strong>拥塞控制</strong>（防止把网络搞堵了）</li>
+</ol>
 <p>我们逐个讲解。</p>
 <h3>序列号与确认应答：给每个字节编号</h3>
 <p>TCP 给<strong>每个字节的数据</strong>都编上号（序列号），接收方收到后会回复一个<strong>确认号（ACK）</strong>告诉发送方："我已经收到了序号 X 之前的所有数据，下一个请发 X"。</p>
@@ -248,10 +259,12 @@ IP server &gt; client: Flags [.], ack 2448
                               ^^^^^
                               &quot;下一个请发 2448&quot;
 </code></pre>
-<p><strong>关键点</strong>：
-- <code>seq</code> 表示<strong>本段数据的起始序列号</strong>
-- <code>ack</code> 表示<strong>期望收到的下一个序列号</strong>（即已收到 <code>ack-1</code> 及之前的所有数据）
-- 如果中间丢了包，<code>ack</code> 会<strong>重复</strong>（重复 ACK），触发重传机制</p>
+<p><strong>关键点</strong>：</p>
+<ul>
+<li><code>seq</code> 表示<strong>本段数据的起始序列号</strong></li>
+<li><code>ack</code> 表示<strong>期望收到的下一个序列号</strong>（即已收到 <code>ack-1</code> 及之前的所有数据）</li>
+<li>如果中间丢了包，<code>ack</code> 会<strong>重复</strong>（重复 ACK），触发重传机制</li>
+</ul>
 <h3>滑动窗口：让发送更高效</h3>
 <p>如果每发送一个字节就等一个 ACK，那效率太低了！</p>
 <p><strong>滑动窗口</strong>允许发送方<strong>连续发送多个包</strong>而不必等待每个 ACK，只要这些包的总大小不超过窗口大小即可。</p>
@@ -393,9 +406,11 @@ ACK:  ACK3, SACK Blocks=[4-5] (&quot;1,2 收到了, 3 丢了, 4,5 已收到&quot
 </code></pre>
 <h3>Nagle 算法与小包问题</h3>
 <p>如果应用频繁发送小数据（比如每次只发 1 字节），会产生大量的小包，严重浪费带宽。</p>
-<p><strong>Nagle 算法</strong>的规则：
-1. 如果有待确认的数据（之前的包还没收到 ACK），先把新数据缓存起来
-2. 只有收到 ACK 或数据积累到 MSS 大小时才发送</p>
+<p><strong>Nagle 算法</strong>的规则：</p>
+<ol>
+<li>如果有待确认的数据（之前的包还没收到 ACK），先把新数据缓存起来</li>
+<li>只有收到 ACK 或数据积累到 MSS 大小时才发送</li>
+</ol>
 <pre><code class="language-text">没有 Nagle:
 App write(&quot;H&quot;) → [1字节] → 网络
 App write(&quot;e&quot;) → [1字节] → 网络
@@ -610,10 +625,12 @@ http {
 </code></pre>
 <blockquote>
 <p>💡 <strong>排查建议</strong>：如果你的服务器上有大量 TIME_WAIT，很可能是 <strong>服务端主动断开了大量短连接</strong>。</p>
-<p>可以考虑：
-- 调大 <code>keepalive_timeout</code>（减少断开频率）
-- 启用 <code>tcp_tw_reuse</code>（复用 TIME_WAIT）
-- 使用连接池（减少频繁建连/断连）</p>
+<p>可以考虑：</p>
+<ul>
+<li>调大 <code>keepalive_timeout</code>（减少断开频率）</li>
+<li>启用 <code>tcp_tw_reuse</code>（复用 TIME_WAIT）</li>
+<li>使用连接池（减少频繁建连/断连）</li>
+</ul>
 </blockquote>
 <h3>CLOSE_WAIT 泄漏：常见陷阱</h3>
 <p>当 Server 主动关闭时，Client 会进入 <strong>CLOSE_WAIT</strong> 状态。</p>
@@ -846,19 +863,25 @@ tcptrace capture.pcap
 <h2>总结</h2>
 <p>今天我们从头到尾梳理了 TCP 的"一生"：</p>
 <p><strong>🤝 三次握手</strong>：确保双向通信能力，交换初始参数（MSS、窗口大小等）</p>
-<p><strong>📦 数据传输可靠性</strong>：
-- 序列号 + ACK 保证有序不丢
-- 滑动窗口实现流量控制
-- 拥塞控制四部曲（慢启动 → 拥塞避免 → 快重传 → 快恢复）
-- 超时重传 + SACK 作为最后防线</p>
-<p><strong>👋 四次挥手</strong>：全双工特性导致需要两对 FIN/ACK
-- <strong>主动关闭方</strong>会进入 TIME_WAIT（等 2MSL）
-- <strong>被动关闭方</strong>经过 CLOSE_WAIT → LAST_ACK → CLOSED
-- 谁先发 FIN，谁就承担 TIME_WAIT</p>
-<p><strong>⚠️ 生产环境要点</strong>：
-- 高并发短连接 → 注意 TIME_WAIT 复用
-- CLOSE_WAIT 泄漏 → 检查应用层是否正确 close()
-- SYN Flood → 启用 SYN Cookies</p>
+<p><strong>📦 数据传输可靠性</strong>：</p>
+<ul>
+<li>序列号 + ACK 保证有序不丢</li>
+<li>滑动窗口实现流量控制</li>
+<li>拥塞控制四部曲（慢启动 → 拥塞避免 → 快重传 → 快恢复）</li>
+<li>超时重传 + SACK 作为最后防线</li>
+</ul>
+<p><strong>👋 四次挥手</strong>：全双工特性导致需要两对 FIN/ACK</p>
+<ul>
+<li><strong>主动关闭方</strong>会进入 TIME_WAIT（等 2MSL）</li>
+<li><strong>被动关闭方</strong>经过 CLOSE_WAIT → LAST_ACK → CLOSED</li>
+<li>谁先发 FIN，谁就承担 TIME_WAIT</li>
+</ul>
+<p><strong>⚠️ 生产环境要点</strong>：</p>
+<ul>
+<li>高并发短连接 → 注意 TIME_WAIT 复用</li>
+<li>CLOSE_WAIT 泄漏 → 检查应用层是否正确 close()</li>
+<li>SYN Flood → 启用 SYN Cookies</li>
+</ul>
 <hr />
 <h2>参考资源</h2>
 <ul>

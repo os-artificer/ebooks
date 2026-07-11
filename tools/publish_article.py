@@ -32,6 +32,42 @@ def guess_title(md_text: str, fallback: str) -> str:
     return fallback
 
 
+def _ensure_blank_line_before_lists(md_text: str) -> str:
+    """在紧跟段落的列表项前插入空行，确保 Python-Markdown 正确识别列表。
+
+    Python-Markdown 遵循原始 Markdown：当列表项直接跟在段落/引言后且没有空行时，
+    会将其视为段落的一部分，导致列表被渲染成普通文本。此函数自动补上空行。
+    代码块（```）内部的内容不会被改动。
+    """
+    lines = md_text.splitlines()
+    result: list[str] = []
+    in_code_block = False
+    list_re = re.compile(r"^\s*(?:>\s*)?[-*+]\s")
+    ordered_list_re = re.compile(r"^\s*(?:>\s*)?\d+\.\s")
+    heading_re = re.compile(r"^#{1,6}\s")
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code_block = not in_code_block
+        result.append(line)
+        if in_code_block or i + 1 >= len(lines):
+            continue
+        next_line = lines[i + 1]
+        next_is_list = list_re.match(next_line) or ordered_list_re.match(next_line)
+        if not next_is_list:
+            continue
+        # 当前行是应当与列表分隔开的段落/引言/引用等，而不是另一个列表项或标题
+        if (
+            stripped
+            and not heading_re.match(line)
+            and not list_re.match(line)
+            and not ordered_list_re.match(line)
+        ):
+            result.append("")
+    return "\n".join(result)
+
+
 def convert_one(md_path: Path, out_html_path: Path) -> None:
     md_text = md_path.read_text(encoding="utf-8")
     title = guess_title(md_text, md_path.stem)
@@ -41,6 +77,9 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
     # - Markdown also typically converts the first heading line to <h1>/<h2>
     # So we remove the first heading line from the markdown before conversion.
     md_text = re.sub(r"(?m)^(#{1,6})\s+.+\s*$\n?", "", md_text, count=1)
+
+    # 修复列表紧贴段落时无法被 Python-Markdown 识别的问题
+    md_text = _ensure_blank_line_before_lists(md_text)
 
     # extensions:
     # - fenced_code: ``` code blocks
@@ -69,6 +108,9 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
             "      a{color:#2563eb;text-decoration:none;}",
             "      a:hover{text-decoration:underline;}",
             "      img{max-width:100%;height:auto;}",
+            "      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}",
+            "      li{margin:0.25rem 0;}",
+            "      blockquote ul,blockquote ol{margin:0.5rem 0;}",
             "      table{border-collapse:collapse;}",
             "      th,td{border:1px solid #d1d5db;padding:6px 10px;}",
             "      th{background:#f9fafb;}",
