@@ -19,11 +19,14 @@ NAV_SYNC_KEYS = frozenset(
 
 
 def guess_title(md_text: str, fallback: str) -> str:
+    # Strip fenced code blocks first, otherwise comments like `# xxx`
+    # inside bash snippets would be mistaken for a heading.
+    text = re.sub(r"(?s)```.*?```", "", md_text)
     # Prefer the first top-level heading.
-    m = re.search(r"(?m)^\s*#\s+(.+?)\s*$", md_text)
+    m = re.search(r"(?m)^\s*#\s+(.+?)\s*$", text)
     if m:
         return m.group(1).strip()
-    m = re.search(r"(?m)^\s*##\s+(.+?)\s*$", md_text)
+    m = re.search(r"(?m)^\s*##\s+(.+?)\s*$", text)
     if m:
         return m.group(1).strip()
     return fallback
