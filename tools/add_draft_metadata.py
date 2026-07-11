@@ -12,7 +12,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DRAFTS = ROOT / "drafts"
-AUTHOR = "岭南过客"
+AUTHOR = "Artificer老王"
 MARKER = f"**作者：**{AUTHOR}"
 
 
@@ -46,7 +46,7 @@ def _has_metadata_block(text: str) -> bool:
 
 def _strip_metadata_block(text: str) -> str:
     return re.sub(
-        r"\n\n> \*\*作者：\*\*\s*岭南过客\s*\n> \*\*更新时间：\*\*\s*[^\n]+\n(?:\n)?",
+        r"\n\n> \*\*作者：\*\*\s*Artificer老王\s*\n> \*\*更新时间：\*\*\s*[^\n]+\n(?:\n)?",
         "\n",
         text,
         count=1,

@@ -105,7 +105,7 @@ def emit_md(slices: list[tuple[str, int | None, str, str, str]]) -> str:
     chunks: list[str] = []
     chunks.append("# 86 条 C/C++ 错误范例：条目全文摘录")
     chunks.append("")
-    chunks.append("> **作者：**岭南过客  ")
+    chunks.append("> **作者：**Artificer老王  ")
     chunks.append("> **更新时间：**2026-05-01")
     chunks.append("")
     chunks.append(
