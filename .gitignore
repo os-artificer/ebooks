@@ -3,6 +3,7 @@
 .venv
 .venv-xhs/
 .cursor
+.codebuddy
 xhs/
 **/__pycache__
 src/cpp/bin/
