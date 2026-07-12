@@ -8,19 +8,19 @@
       "items": [
         {
           "href": "./page/cpp/bad-case.html",
-          "text": "86 条 C/C++ 错误范例"
+          "text": "#1：使用未初始化变量（读取垃圾值 / UB）"
         },
         {
           "href": "./page/cpp/hot-updated.html",
-          "text": "Linux 平台 C++ 热更新技术：从原理到实践"
+          "text": "一、什么是热更新？"
         },
         {
           "href": "./page/cpp/type_erasure.html",
-          "text": "C++ 类型擦除：原理、备选方案与从 C++11 到 C++98 的两份参考实现"
+          "text": "一、什么是类型擦除技术"
         },
         {
           "href": "./page/cpp/函数重载覆盖与隐藏.html",
-          "text": "C++ 函数：重载、覆盖、隐藏"
+          "text": "一、重载（Overload）：同一作用域，同名不同参"
         },
         {
           "href": "./page/cpp/匿名namespace有什么作用.html",
@@ -28,15 +28,15 @@
         },
         {
           "href": "./page/cpp/多线程与并发控制.html",
-          "text": "C++ 多线程用法与并发控制详解"
+          "text": "一、为啥总扯上“语法特性”"
         },
         {
           "href": "./page/cpp/如何设计一个内存池.html",
-          "text": "C++ 内存池：为什么、何时用、怎么造、社区里有哪些轮子"
+          "text": "一、为什么需要内存池？"
         },
         {
           "href": "./page/cpp/无锁队列的实现原理.html",
-          "text": "C++ 高性能编程之无锁队列的实现原理"
+          "text": "一、按并发模型分"
         },
         {
           "href": "./page/cpp/枚举类型的特点及用法.html",
@@ -44,15 +44,15 @@
         },
         {
           "href": "./page/cpp/模版泛化特化实例化.html",
-          "text": "C++ 模板：泛化、实例化、特化"
+          "text": "一、泛化：先有一张\"万能图纸\""
         },
         {
           "href": "./page/cpp/线程池实现方案汇总.html",
-          "text": "C++ 线程池实现全方案：从中央队列到工作窃取"
+          "text": "一、先明确：线程池要解决的核心问题"
         },
         {
           "href": "./page/cpp/限制继承的方法有哪些.html",
-          "text": "C++ 各版本\"限制继承\"都有哪些招？"
+          "text": "一、不让类再被继承（终结类）"
         }
       ]
     },
@@ -64,19 +64,19 @@
       "items": [
         {
           "href": "./page/golang/cgo.html",
-          "text": "深入浅出 CGO：Go 与 C 互操作原理与实践"
+          "text": "CGO 是什么？"
         },
         {
           "href": "./page/golang/go-build-flag-tag.html",
-          "text": "Go build flags 实战：7 个场景掌握构建期控制"
+          "text": "为什么 build flag 值得认真学"
         },
         {
           "href": "./page/golang/safe-package-panic-recovery-in-depth.html",
-          "text": "Go 生产级 Panic 防护实战：从一个 safe 包看防御性编程的艺术"
+          "text": "一、问题背景：为什么需要统一的 Panic 防护？"
         },
         {
           "href": "./page/golang/一种优雅的配置模式实践.html",
-          "text": "Go 一种优雅的配置模式实践"
+          "text": "一、长什么样"
         },
         {
           "href": "./page/golang/怎么实现chan的读写超时.html",
@@ -84,7 +84,7 @@
         },
         {
           "href": "./page/golang/怎么实现守护进程.html",
-          "text": "用 Go 实现父子双进程守护：从原理到落地"
+          "text": "1. 先看实现守护需要的基础能力"
         }
       ]
     },
@@ -96,7 +96,7 @@
       "items": [
         {
           "href": "./page/stl/读懂stl_map.h：从红黑树到接口语义.html",
-          "text": "深入拆解 stl_map.h：GCC 的 std::map 到底怎么跑起来"
+          "text": "零、先给你一张“源码速读导航”"
         }
       ]
     },
@@ -108,23 +108,19 @@
       "items": [
         {
           "href": "./page/linux/elf.html",
-          "text": "ELF 文件格式数据结构全解析"
+          "text": "一、什么是 ELF？"
         },
         {
           "href": "./page/linux/fork-deep-dive.html",
-          "text": "深入 Linux 内核：一次 fork() 调用，内核到底做了什么？"
-        },
-        {
-          "href": "./page/linux/linux-boot-process.html",
-          "text": "详解 Linux 启动过程：从按下电源到第一个用户态进程，并用 QEMU 实地观察"
+          "text": "一、全景：调用链与数据流"
         },
         {
           "href": "./page/linux/macos-linux-source-setup.html",
-          "text": "macOS上保存Linux源码的方案"
+          "text": "问题背景"
         },
         {
           "href": "./page/linux/qemu-gdb-kernel-wechat.html",
-          "text": "入门实践：在 x86_64 上使用 QEMU 与 GDB 配置Linux 内核调试环境"
+          "text": "一、安装依赖"
         }
       ]
     },
@@ -136,7 +132,7 @@
       "items": [
         {
           "href": "./page/libc-gcc/glibc-memory-workings.html",
-          "text": "glibc malloc / free 机制解析：一次分配从用户代码走到内核的全程"
+          "text": "一、先看一眼全景：一次 malloc / free 到底发生了什么"
         }
       ]
     },
@@ -148,19 +144,23 @@
       "items": [
         {
           "href": "./page/tech-arch/A2A-proto.html",
-          "text": "什么是 A2A？"
+          "text": "一、为何要用 A2A？"
         },
         {
           "href": "./page/tech-arch/tcp-workflow.html",
           "text": "从三次握手到四次挥手：一文搞懂TCP的\"一生\""
         },
         {
+          "href": "./page/tech-arch/udp-reliable-transport.html",
+          "text": "从 UDP 到可靠传输：KCP 与 QUIC 的原理、对比与选择"
+        },
+        {
           "href": "./page/tech-arch/uuid.html",
-          "text": "UUID 深度揭秘：那些隐藏在你 ID 里的敏感信息"
+          "text": "一、UUID 的历史背景与应用场景"
         },
         {
           "href": "./page/tech-arch/数据库选型方案.html",
-          "text": "2026 数据库选型指南：从 OLTP 到时序一网打尽"
+          "text": "一、关系型数据库（RDBMS）"
         }
       ]
     }

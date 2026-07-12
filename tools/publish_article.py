@@ -22,11 +22,16 @@ def guess_title(md_text: str, fallback: str) -> str:
     # Strip fenced code blocks first, otherwise comments like `# xxx`
     # inside bash snippets would be mistaken for a heading.
     text = re.sub(r"(?s)```.*?```", "", md_text)
-    # Prefer the first top-level heading.
-    m = re.search(r"(?m)^\s*#\s+(.+?)\s*$", text)
+    # Also strip lines that look like decoration (repeated === or ---)
+    # which may appear after bash comment lines like "# =========="
+    text = re.sub(r"(?m)^\s*#\s*[=]{3,}\s*$", "", text)
+    text = re.sub(r"(?m)^\s*#\s*[-]{3,}\s*$", "", text)
+    # Prefer ## (level-2) headings first, as most articles use ## as the main title.
+    m = re.search(r"(?m)^\s*##\s+(.+?)\s*$", text)
     if m:
         return m.group(1).strip()
-    m = re.search(r"(?m)^\s*##\s+(.+?)\s*$", text)
+    # Then fall back to # (level-1) heading.
+    m = re.search(r"(?m)^\s*#\s+(.+?)\s*$", text)
     if m:
         return m.group(1).strip()
     return fallback
