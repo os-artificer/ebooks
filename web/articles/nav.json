@@ -147,6 +147,10 @@
           "text": "一、为何要用 A2A？"
         },
         {
+          "href": "./page/tech-arch/http-protocol-evolution.html",
+          "text": "HTTP 协议演进史：从一行文本到多路复用的全面解析"
+        },
+        {
           "href": "./page/tech-arch/tcp-workflow.html",
           "text": "从三次握手到四次挥手：一文搞懂TCP的\"一生\""
         },
