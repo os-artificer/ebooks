@@ -1,5 +1,36 @@
 const { createApp, ref, computed, onMounted } = Vue;
 
+// ---- Mermaid 图表渲染（文章内 ```mermaid 代码块）----
+if (window.mermaid) {
+  window.mermaid.initialize({
+    startOnLoad: false,
+    theme: "default",
+    securityLevel: "loose", // 允许 <br/> 等 HTML 标签
+  });
+}
+
+// 将注入后的文章中 `code.language-mermaid` 转换为 div.mermaid 并渲染新增节点
+function renderMermaid(container) {
+  if (!window.mermaid) return;
+  container
+    .querySelectorAll("pre > code.language-mermaid")
+    .forEach((code) => {
+      const pre = code.parentElement;
+      const div = document.createElement("div");
+      div.className = "mermaid";
+      div.textContent = code.textContent;
+      pre.replaceWith(div);
+    });
+  const nodes = Array.from(container.querySelectorAll(".mermaid"));
+  if (nodes.length) {
+    try {
+      window.mermaid.run({ nodes });
+    } catch (e) {
+      console.error("mermaid render error", e);
+    }
+  }
+}
+
 function getAppTemplate() {
   const el = document.getElementById("vue-app-template");
   if (!el) {
@@ -85,6 +116,7 @@ async function fetchAndInject(href) {
 
   container.innerHTML = doc.body.innerHTML;
   rewriteRelativeUrls(container, baseUrl);
+  renderMermaid(container);
 }
 
 createApp({

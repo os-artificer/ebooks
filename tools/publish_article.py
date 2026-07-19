@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import shutil
@@ -15,6 +16,25 @@ NAV_PATH = ROOT / "web" / "articles" / "nav.json"
 # 与 publish_all 中一致：仅这些分类参与导航同步
 NAV_SYNC_KEYS = frozenset(
     {"cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch"}
+)
+
+# 仅当文章含 ```mermaid 代码块时, 才在 HTML 中注入 Mermaid 运行时,
+# 避免给无图的文章额外引入 CDN 依赖。fenced_code 会把 ```mermaid
+# 渲染成 <pre><code class="language-mermaid">, 这里在 DOM 就绪后把这些
+# 代码块替换成 <div class="mermaid"> 再交给 mermaid.run() 渲染成矢量图。
+MERMAID_SCRIPT = (
+    "    <script type=\"module\">\n"
+    "      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';\n"
+    "      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });\n"
+    "      document.querySelectorAll('pre > code.language-mermaid').forEach((el) => {\n"
+    "        const pre = el.parentElement;\n"
+    "        const div = document.createElement('div');\n"
+    "        div.className = 'mermaid';\n"
+    "        div.textContent = el.textContent;\n"
+    "        pre.replaceWith(div);\n"
+    "      });\n"
+    "      mermaid.run();\n"
+    "    </script>"
 )
 
 
@@ -94,10 +114,25 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
         md_text,
         extensions=["fenced_code", "tables"],
     )
+    # 将 ```mermaid 代码块转换为可直接渲染的 div.mermaid。
+    # Python-Markdown 会转义 < > &，这里还原为原始文本，使 <br/> 等标签可被 Mermaid 解析。
+    def _mermaid_div(m: re.Match) -> str:
+        inner = html.unescape(m.group(1)).strip("\n")
+        return f'<div class="mermaid">\n{inner}\n</div>'
+
+    html_body = re.sub(
+        r'<pre><code class="language-mermaid">([\s\S]*?)</code></pre>',
+        _mermaid_div,
+        html_body,
+    )
     # 草稿在 drafts/<分类>/ 下用 ../images/...；发布到 web/page/<分类>/ 需多一层 ../
     html_body = html_body.replace('src="../images/', 'src="../../images/')
+    # 注意：上面已把 <pre><code class="language-mermaid"> 转换为 <div class="mermaid">，
+    # 所以这里基于原始 Markdown 判断是否需要注入 Mermaid 运行时。
+    has_mermaid = "```mermaid" in md_text
 
     out_html_path.parent.mkdir(parents=True, exist_ok=True)
+    mermaid_head = [MERMAID_SCRIPT] if has_mermaid else []
     page = "\n".join(
         [
             "<!DOCTYPE html>",
@@ -113,6 +148,8 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
             "      a{color:#2563eb;text-decoration:none;}",
             "      a:hover{text-decoration:underline;}",
             "      img{max-width:100%;height:auto;}",
+            "      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}",
+            "      .mermaid svg{max-width:100%;height:auto;}",
             "      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}",
             "      li{margin:0.25rem 0;}",
             "      blockquote ul,blockquote ol{margin:0.5rem 0;}",
@@ -121,7 +158,9 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
             "      th{background:#f9fafb;}",
             "      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}",
             "      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}",
+            "      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}",
             "    </style>",
+            *mermaid_head,
             "</head>",
             "<body>",
             f"    <article>",

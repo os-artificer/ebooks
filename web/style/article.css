@@ -169,6 +169,22 @@
   height: auto;
 }
 
+/* ===== Mermaid 图表 ===== */
+#article .mermaid {
+  text-align: center;
+  margin: 1.4em 0;
+  padding: 14px 12px;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  overflow-x: auto;
+}
+
+#article .mermaid svg {
+  max-width: 100%;
+  height: auto;
+}
+
 #article .welcome {
   max-width: 28rem;
   text-align: center;
