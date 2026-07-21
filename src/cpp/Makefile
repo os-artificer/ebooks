@@ -31,6 +31,9 @@ signal_reload_LDFLAGS := -ldl
 # 需要链接 librt（POSIX 共享内存）
 graceful_restart_LDFLAGS := -lrt
 
+# encoding_convert：跨平台编码转换（POSIX 用 iconv）
+encoding_convert_LDFLAGS := -liconv
+
 # lock_free_queue_demo：无锁队列 demo（SPSC 链表实现）
 # 需要 -pthread（已在 CXXFLAGS 中）
 
