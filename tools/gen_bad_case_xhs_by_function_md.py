@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-SRC = REPO_ROOT / "src" / "cpp" / "bad_case.cpp"
+SRC = REPO_ROOT / "src" / "cpp" / "bad-case" / "bad_case.cpp"
 OUT = REPO_ROOT / "drafts" / "cpp" / "bad-case-按函数切片.md"
 
 CATALOG_HDR = re.compile(r"^/\* ---------- (\d+)\.\s*(.+?)\s*-+\s*$")

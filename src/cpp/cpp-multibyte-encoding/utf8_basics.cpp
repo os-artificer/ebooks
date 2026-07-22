@@ -9,13 +9,15 @@
 std::size_t utf8_codepoint_count(const std::string& s) {
     std::size_t n = 0;
     for (unsigned char c : s) {
-        if ((c & 0xC0) != 0x80) ++n;  // 跳过续字节 10xxxxxx
+        // 跳过续字节 10xxxxxx
+        if ((c & 0xC0) != 0x80) ++n;
     }
     return n;
 }
 
 int main() {
-    std::string s = "中文AB";  // 2 个汉字(各3字节) + 2 个 ASCII
+    // 2 个汉字(各3字节) + 2 个 ASCII
+    std::string s = "中文AB";
 
     std::cout << "字符串内容: " << s << "\n";
     std::cout << "std::string::size() 字节数: " << s.size() << "\n";
@@ -27,7 +29,8 @@ int main() {
               << static_cast<int>(static_cast<unsigned char>(s[0])) << std::dec << "\n";
 
     // 危险操作：从字节中间切分
-    std::string half = s.substr(1);  // 从"中"的第 2 个字节开始
+    // 从"中"的第 2 个字节开始
+    std::string half = s.substr(1);
     std::cout << "s.substr(1) 结果(出现乱码/替换符): " << half << "\n";
 
     return 0;

@@ -16,7 +16,8 @@ int main() {
     std::cout << "Linux/macOS 上 wchar_t 是 UTF-32(4 字节)\n";
 #endif
 
-    std::string u8 = "中文A";  // UTF-8 源码字面量：6 + 1 = 7 字节
+    // UTF-8 源码字面量：6 + 1 = 7 字节
+    std::string u8 = "中文A";
 
     // C++11 起的标准转换工具（现已 deprecated）
     std::wstring_convert<std::codecvt_utf8<wchar_t>> cvt;
@@ -30,7 +31,8 @@ int main() {
     std::cout << "往返结果: " << back << "  一致: " << (back == u8 ? "是" : "否") << "\n";
 
     // locale 的影响：宽字符分类/大小写等函数依赖全局 locale
-    std::locale::global(std::locale(""));  // 设为用户环境 locale(通常是 UTF-8)
+    // 设为用户环境 locale(通常是 UTF-8)
+    std::locale::global(std::locale(""));
     std::wcout << L"宽字符输出示例: " << w << L"\n";
 
     return 0;

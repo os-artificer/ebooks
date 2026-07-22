@@ -11,6 +11,10 @@
           "text": "#1：使用未初始化变量（读取垃圾值 / UB）"
         },
         {
+          "href": "./page/cpp/cpp-multibyte-encoding.html",
+          "text": "C++ 多字节编码：从字符集历史到跨平台实战"
+        },
+        {
           "href": "./page/cpp/hot-updated.html",
           "text": "一、什么是热更新？"
         },

@@ -16,7 +16,8 @@ std::wstring utf8_to_wide(const std::string& s) {
     int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, nullptr, 0);
     std::wstring w(n, L'\0');
     MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
-    w.pop_back();  // 去掉结尾的 L'\0'
+    // 去掉结尾的 L'\0'
+    w.pop_back();
     return w;
 }
 
@@ -44,7 +45,7 @@ std::string wide_to_utf8(const std::wstring& w) {
     std::string s(n, '\0');
     WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, s.data(), n, nullptr, nullptr);
     s.pop_back();
-    return s;
+    return w;
 }
 
 // 对外统一入口：UTF-8 <-> 当前 ANSI 代码页
@@ -53,6 +54,11 @@ std::string ansi_to_utf8(const std::string& ansi) { return wide_to_utf8(ansi_to_
 
 #else
 #include <iconv.h>
+
+// 处理 iconv 转换中的错误字节（EILSEQ/EINVAL 时跳过 1 字节）
+static void skip_one_byte(char*& inbuf, size_t& inleft) {
+    if (inleft > 0) { ++inbuf; --inleft; }
+}
 
 // 通用 iconv 转换(from -> to 是 iconv 支持的编码名，如 "UTF-8"、"GBK")
 std::string iconv_convert(const std::string& in, const char* to, const char* from) {
@@ -72,16 +78,13 @@ std::string iconv_convert(const std::string& in, const char* to, const char* fro
         size_t outleft = sizeof(buf);
         size_t r = iconv(cd, &inbuf, &inleft, &outbuf, &outleft);
         out.append(buf, sizeof(buf) - outleft);
-        if (r == (size_t)-1) {
-            if (errno == E2BIG) {
-                continue;  // 输出缓冲不够，继续写
-            } else if (errno == EINVAL || errno == EILSEQ) {
-                // 遇到不完整或非法字节：跳过 1 字节，避免死循环
-                if (inleft > 0) { ++inbuf; --inleft; }
-            } else {
-                break;
-            }
+        if (r != (size_t)-1) continue;          // 正常转换完成本轮
+        if (errno == E2BIG) continue;            // 输出缓冲不够，继续写
+        if (errno == EINVAL || errno == EILSEQ) {
+            skip_one_byte(inbuf, inleft);         // 非法/不完整字节：跳过
+            continue;
         }
+        break;                                   // 未知错误
     }
     iconv_close(cd);
     return out;
@@ -106,18 +109,22 @@ void dump_hex(const std::string& label, const std::string& s) {
 }
 
 int main() {
-    std::string u8 = "中文";  // 源码以 UTF-8 保存，此字面量是 6 个 UTF-8 字节
+    // 源码以 UTF-8 保存，此字面量是 6 个 UTF-8 字节
+    std::string u8 = "中文";
 
 #ifdef _WIN32
     dump_hex("UTF-8 原文 ", u8);
-    std::string ansi = utf8_to_ansi(u8);  // 转成本机 ANSI 代码页(如 GBK)
+    // 转成本机 ANSI 代码页(如 GBK)
+    std::string ansi = utf8_to_ansi(u8);
     dump_hex("ANSI(本机代码页)", ansi);
-    std::string back = ansi_to_utf8(ansi);  // 转回 UTF-8
+    // 转回 UTF-8
+    std::string back = ansi_to_utf8(ansi);
     std::cout << "转回 UTF-8: " << back << "\n";
 #else
     dump_hex("UTF-8 原文 ", u8);
     std::string gbk = utf8_to_gbk(u8);
-    dump_hex("GBK 编码  ", gbk);  // 期望: d6 d0 ce c4
+    // 期望: d6 d0 ce c4
+    dump_hex("GBK 编码  ", gbk);
     std::string back = gbk_to_utf8(gbk);
     std::cout << "转回 UTF-8: " << back << "\n";
     std::cout << "往返一致: " << (back == u8 ? "是" : "否") << "\n";

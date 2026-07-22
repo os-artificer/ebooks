@@ -7,7 +7,8 @@
 int main() {
     namespace fs = std::filesystem;
 
-    fs::path p = "文档/报告.txt";  // 源码 UTF-8，路径名含中文
+    // 源码 UTF-8，路径名含中文
+    fs::path p = "文档/报告.txt";
 
     std::cout << "原生格式  string() : " << p.string() << "\n";
     std::cout << "UTF-8     u8string(): " << p.u8string() << "\n";
