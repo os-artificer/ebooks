@@ -7,6 +7,8 @@
 .cursor
 .codebuddy
 xhs/
+article_video/
+generated-images/
 **/__pycache__
 src/cpp/bin/
 
@@ -51,3 +53,5 @@ src/cpp/bin/
 
 # xhs_md_to_png: cached Google fonts (Noto Sans SC, JetBrains Mono), ~30MB
 tools/fonts/xhs_cache/
+
+generated-images/
