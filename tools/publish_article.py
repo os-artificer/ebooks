@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import html
 import json
 import re
 import shutil
@@ -24,16 +23,8 @@ NAV_SYNC_KEYS = frozenset(
 # 代码块替换成 <div class="mermaid"> 再交给 mermaid.run() 渲染成矢量图。
 MERMAID_SCRIPT = (
     "    <script type=\"module\">\n"
-    "      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';\n"
-    "      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });\n"
-    "      document.querySelectorAll('pre > code.language-mermaid').forEach((el) => {\n"
-    "        const pre = el.parentElement;\n"
-    "        const div = document.createElement('div');\n"
-    "        div.className = 'mermaid';\n"
-    "        div.textContent = el.textContent;\n"
-    "        pre.replaceWith(div);\n"
-    "      });\n"
-    "      mermaid.run();\n"
+    "      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';\n"
+    "      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });\n"
     "    </script>"
 )
 
@@ -115,9 +106,12 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
         extensions=["fenced_code", "tables"],
     )
     # 将 ```mermaid 代码块转换为可直接渲染的 div.mermaid。
-    # Python-Markdown 会转义 < > &，这里还原为原始文本，使 <br/> 等标签可被 Mermaid 解析。
+    # 必须保留 Python-Markdown 的 &lt; &gt; &amp; 转义：Mermaid 读的是 div 的
+    # textContent，浏览器会把实体还原成原始字符；若在这里提前还原，
+    # classDiagram 的 <<Interface>>、<|-- 等写法会被 HTML 解析器当成标签吃掉，
+    # 导致 Mermaid 报 "Syntax error in text"。<br/> 之类同样能正常生效。
     def _mermaid_div(m: re.Match) -> str:
-        inner = html.unescape(m.group(1)).strip("\n")
+        inner = m.group(1).strip("\n")
         return f'<div class="mermaid">\n{inner}\n</div>'
 
     html_body = re.sub(

@@ -6,7 +6,7 @@ BINDIR := bin
 # ============================================================
 # 按文章分子目录，源文件在各子目录中
 # ============================================================
-SUBDIRS := cpp-multibyte-encoding hot-updated bad-case lock-free-queue
+SUBDIRS := cpp-multibyte-encoding hot-updated bad-case lock-free-queue design-mode
 SRCS := $(foreach d,$(SUBDIRS),$(wildcard $(d)/*.cpp))
 BINS := $(patsubst %.cpp,$(BINDIR)/%,$(notdir $(SRCS)))
 
@@ -27,6 +27,12 @@ got_hijack_LDFLAGS := -ldl
 code_patch_CXXFLAGS := -O0
 signal_reload_LDFLAGS := -ldl
 graceful_restart_LDFLAGS := -lrt
+
+# macOS 没有 librt，链接 -lrt 会报 library not found，去掉
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+graceful_restart_LDFLAGS :=
+endif
 
 # --- lock-free-queue ---
 

@@ -40,8 +40,10 @@
 #include <vector>
 
 #include <dlfcn.h>
+#if defined(__linux__)
 #include <elf.h>
 #include <link.h>
+#endif
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -52,6 +54,7 @@
 // 调用 rand() 时通过 PLT → GOT 间接跳转，
 // 修改 GOT 条目即可劫持。
 
+#if defined(__linux__)
 // 新函数：替换 rand()，总是返回 42
 extern "C" int patched_rand() {
     return 42;
@@ -253,3 +256,16 @@ int main() {
     std::cout << "\n完成。\n";
     return 0;
 }
+
+#else  // !defined(__linux__)
+
+#include <iostream>
+
+int main() {
+    std::cout << "=== 方案 B：GOT/PLT 劫持 ===\n\n";
+    std::cout << "本示例依赖 ELF 格式与 GOT 表（需要 <elf.h>/<link.h>），\n";
+    std::cout << "仅在 Linux 平台可用。macOS 使用 Mach-O 格式，不支持。\n";
+    return 0;
+}
+
+#endif  // __linux__

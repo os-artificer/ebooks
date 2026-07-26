@@ -19,6 +19,10 @@
           "text": "一、什么是热更新？"
         },
         {
+          "href": "./page/cpp/state-pattern.html",
+          "text": "C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装"
+        },
+        {
           "href": "./page/cpp/type_erasure.html",
           "text": "一、什么是类型擦除技术"
         },

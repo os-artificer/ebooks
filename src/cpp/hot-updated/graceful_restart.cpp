@@ -42,6 +42,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#if defined(__APPLE__)
+#include <mach-o/dyld.h>
+#endif
+
 // ============================================================
 // 需要在新旧进程间迁移的运行状态
 // ============================================================
@@ -220,8 +224,18 @@ static int run_process() {
         // 设置环境变量 HOT_RESTART_GEN=<generation+1>
         setenv("HOT_RESTART_GEN", gen_buf, 1);
 
-        // exec 自身（用 /proc/self/exe 获取当前可执行文件路径）
+        // exec 自身：Linux 用 /proc/self/exe，macOS 用 _NSGetExecutablePath
+#if defined(__linux__)
         execl("/proc/self/exe", "graceful_restart", nullptr);
+#else
+        char exe_path[1024];
+        uint32_t exe_path_len = sizeof(exe_path);
+        if (_NSGetExecutablePath(exe_path, &exe_path_len) != 0) {
+            std::cerr << "获取可执行文件路径失败（缓冲区不足）\n";
+            _exit(1);
+        }
+        execl(exe_path, "graceful_restart", nullptr);
+#endif
 
         // exec 成功不会返回，到这里说明失败
         perror("execl");
