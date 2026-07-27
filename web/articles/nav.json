@@ -83,6 +83,10 @@
           "text": "为什么 build flag 值得认真学"
         },
         {
+          "href": "./page/golang/go-generate.html",
+          "text": "Go 工程化实战：go generate——少写样板代码，让工具替你干活"
+        },
+        {
           "href": "./page/golang/safe-package-panic-recovery-in-depth.html",
           "text": "一、问题背景：为什么需要统一的 Panic 防护？"
         },

@@ -1,0 +1,7 @@
+[
+  {"name": "Go 官网", "url": "https://go.dev", "desc": "Go 语言官方网站"},
+  {"name": "Go Playground", "url": "https://go.dev/play/", "desc": "浏览器里在线运行 Go 代码"},
+  {"name": "Effective Go", "url": "https://go.dev/doc/effective_go", "desc": "官方编程风格与实践指南"},
+  {"name": "Go Blog", "url": "https://go.dev/blog/", "desc": "官方博客，go generate 的原始出处"},
+  {"name": "pkg.go.dev", "url": "https://pkg.go.dev", "desc": "标准库与第三方包的文档中心"}
+]

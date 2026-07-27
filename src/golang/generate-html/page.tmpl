@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+</head>
+<body>
+  <h1>{{.Title}}</h1>
+  <p>共收录 {{len .Links}} 个资源 ｜ 本页由 go generate 自动生成 ｜ 生成时间：{{.GeneratedAt}}</p>
+  <ul>
+  {{- range .Links}}
+    <li><a href="{{.URL}}" target="_blank" rel="noopener">{{.Name}}</a> — {{.Desc}}</li>
+  {{- end}}
+  </ul>
+</body>
+</html>

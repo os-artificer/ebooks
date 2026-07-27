@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Go 工程化实战：go generate——少写样板代码，让工具替你干活</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">Go 工程化实战：go generate——少写样板代码，让工具替你干活</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-07-27  |  阅读时长：约 13 分钟</p>
+<p>试想这样一个工作场景——</p>
+<p>定义了一个枚举 <code>Status</code>，为了让日志打印出 "Running" 而不是冷冰冰的 <code>2</code>，你手写了一个 <code>String()</code> 方法。</p>
+<p>后来加了新状态，日志又开始吐数字，你才想起来 <code>String()</code> 没同步。</p>
+<p>或者给每个接口写 Mock 做单测，接口加个方法，十几个 Mock 文件编译报错，你一个个补。</p>
+<p>再或者 protobuf 改了字段，忘了重新 <code>protoc</code>，线上用的还是旧结构。</p>
+<p><strong>go generate</strong> 就是 Go 官方给这类"机械、重复、易漏"的活准备的。</p>
+<p>它在源码里写一条指令注释，需要时用一条命令把代码批量生成出来，让"定义"和"样板"始终从同一处来源派生。</p>
+<hr />
+<h2>🕳️ 先看问题：样板代码的泥潭</h2>
+<p>手写枚举字符串化的反面教材：</p>
+<pre><code class="language-go">type Status int
+
+const (
+    Pending Status = iota
+    Running
+    Success
+    Failed
+)
+
+// 手写 String()，一旦加新状态容易忘改
+func (s Status) String() string {
+    switch s {
+    case Pending:
+        return &quot;Pending&quot;
+    case Running:
+        return &quot;Running&quot;
+    case Success:
+        return &quot;Success&quot;
+    case Failed:
+        return &quot;Failed&quot;
+    default:
+        return fmt.Sprintf(&quot;Status(%d)&quot;, s)
+    }
+}
+</code></pre>
+<p>问题在哪？</p>
+<ul>
+<li><strong>同步靠人记</strong>：枚举与 <code>String()</code> 是两处定义，加一个状态就得改两处，漏改编译还不一定报错。</li>
+<li><strong>重复且枯燥</strong>：每个枚举、每个错误码、每个接口都要写一遍几乎一样的"翻译"代码。</li>
+<li><strong>Mock 更痛</strong>：接口一变，所有手写 Mock 编译失败，改起来比接口本身还累。</li>
+<li><strong>生成物不透明</strong>：protoc、yacc 这类工具产出大量代码，如果靠人手动维护，既慢又错。</li>
+</ul>
+<p>问题本质：<strong>有一份"权威定义"（枚举、接口、proto），却要靠人工把它翻译成另一份"等价代码"</strong>。这两份只要不同步，就注定会漂移。</p>
+<hr />
+<h2>🧩 go generate 是什么</h2>
+<h3>核心思想</h3>
+<p><strong>go generate 不生成任何代码本身，它只是一条"指令调度器"。</strong></p>
+<p>你在源码里写一行特殊注释：</p>
+<pre><code class="language-go">//go:generate stringer -type=Status
+</code></pre>
+<p>然后运行 <code>go generate ./...</code>，Go 工具链会扫描所有 <code>.go</code> 文件里的 <code>//go:generate</code> 注释，把后面的内容分词、展开变量后<strong>直接执行</strong>（不经 shell）——这里就是调用 <code>stringer</code> 这个外部工具，去生成 <code>status_string.go</code>。</p>
+<p><strong>"在源码里留下生成指令，用一条命令把样板代码批量造出来。"</strong></p>
+<p>真正的生成逻辑在 <code>stringer</code> / <code>protoc</code> / <code>mockgen</code> 这些工具里，go generate 是它们的统一入口。</p>
+<p>对比一下：</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>本质</th>
+<th>加新状态/方法的代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>手写样板</td>
+<td>人肉把定义翻译成代码</td>
+<td>每处手写都要同步改（N 处）</td>
+</tr>
+<tr>
+<td>go generate</td>
+<td>写一条指令，工具批量生成</td>
+<td>重新跑一次 <code>go generate</code>（1 步）</td>
+</tr>
+</tbody>
+</table>
+<h3>指令长什么样</h3>
+<p><code>//go:generate</code> 是一行以固定前缀开头的文本，有严格格式要求：</p>
+<ul>
+<li>必须以 <code>//go:generate</code> 开头，<strong>前面不能有空格</strong>（紧贴行首），且 <code>//</code> 与 <code>go</code> 之间也不能有空格。</li>
+<li>只能写在一行里，不能续行。</li>
+<li><code>go:generate</code> 后面跟 <code>命令 参数...</code>，第一个 token 是要执行的命令，其余是参数。</li>
+<li>⚠️ 关键认知：go generate <strong>不解析 Go 语法，只做逐行文本扫描</strong>。所以只要某一行以 <code>//go:generate</code> 开头，哪怕它实际位于块注释 <code>/* */</code> 或多行字符串内部，也会被当成指令执行。</li>
+</ul>
+<pre><code class="language-go">//go:generate stringer -type=Status          // ✅ 正确：紧贴行首
+  //go:generate stringer -type=Status        // ❌ 前面有空格，不会被识别
+// go:generate stringer -type=Status         // ❌ // 与 go 之间有空格，不会被识别
+/* //go:generate stringer -type=Status */    // ❌ 指令不在行首（在 /* 之后），不会被识别
+</code></pre>
+<h3>工作机制</h3>
+<p><code>go generate</code> 执行指令时，有几个关键行为值得记住：</p>
+<ul>
+<li><strong>在哪跑</strong>：命令的工作目录，是<strong>包含该指令的源文件所在目录</strong>，不是你执行 <code>go generate</code> 的目录。</li>
+<li><strong>怎么跑</strong>：go generate 把指令按<strong>空格/双引号分词</strong>、展开环境变量后，<strong>直接执行命令本身，不经任何 shell</strong>（源码是 <code>exec.Command</code>）。所以管道 <code>|</code>、重定向 <code>&gt;</code>、<code>&amp;&amp;</code>、通配符 <code>*</code>、<code>$()</code> 这些 shell 特性<strong>默认都用不了</strong>——要用就得显式写 <code>sh -c "..."</code>（<code>sh</code> 本身也是一个可执行文件）。</li>
+<li><strong>内置环境变量</strong>：执行前会注入 8 个变量，方便工具感知上下文：</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>变量</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>$GOFILE</code></td>
+<td>当前正在处理的文件名</td>
+</tr>
+<tr>
+<td><code>$GOLINE</code></td>
+<td>指令所在行号</td>
+</tr>
+<tr>
+<td><code>$GOPACKAGE</code></td>
+<td>当前文件所属包名</td>
+</tr>
+<tr>
+<td><code>$GOARCH</code></td>
+<td>目标架构</td>
+</tr>
+<tr>
+<td><code>$GOOS</code></td>
+<td>目标操作系统</td>
+</tr>
+<tr>
+<td><code>$GOROOT</code></td>
+<td>调用 generate 的那个 go 的安装根目录</td>
+</tr>
+<tr>
+<td><code>$PATH</code></td>
+<td>父进程 PATH，并把 <code>$GOROOT/bin</code> 提到最前</td>
+</tr>
+<tr>
+<td><code>$DOLLAR</code></td>
+<td>字面量 <code>$</code>（需要把 <code>$</code> 传给生成器时用它）</td>
+</tr>
+</tbody>
+</table>
+<p>💡 展开发生在执行前：go generate 用 <code>$NAME</code> 或 <code>${NAME}</code> 语法（<strong>所有操作系统统一</strong>，不是 Windows 的 <code>%VAR%</code>）替换指令里的环境变量——不止这 8 个，任何已设置的环境变量（如 <code>$HOME</code>）都会被展开，未设置的展开为空串，连双引号字符串内部也会展开。想给生成器传一个字面 <code>$</code>，就写 <code>$DOLLAR</code>（如 <code>$DOLLAR</code>HOME → 生成器收到 <code>$HOME</code>）。</p>
+<hr />
+<h2>🗺️ 最小可运行示例：用 stringer 生成枚举字符串</h2>
+<p>下面用官方教程的经典例子，看 go generate 跑起来的完整链路。</p>
+<pre><code class="language-go">// main.go
+package main
+
+import &quot;fmt&quot;
+
+//go:generate go run golang.org/x/tools/cmd/stringer@latest -type=Pill
+
+// Pill 是药片种类，只想让它能打印出名字而不是数字
+type Pill int
+
+const (
+    Placebo Pill = iota
+    Aspirin
+    Ibuprofen
+    Paracetamol
+    Acetaminophen = Paracetamol // 和 Paracetamol 同值
+)
+
+func main() {
+    fmt.Printf(&quot;headache -&gt; take %v\n&quot;, Aspirin)
+    fmt.Printf(&quot;fever    -&gt; take %v\n&quot;, Paracetamol)
+    fmt.Printf(&quot;alias    -&gt; take %v\n&quot;, Acetaminophen)
+}
+</code></pre>
+<p>执行两步：</p>
+<pre><code class="language-bash"># 第一步：根据指令生成 pill_string.go
+go generate ./...
+
+# 第二步：正常运行（此时 Pill 已经有了 String()）
+go run .
+</code></pre>
+<p>输出：</p>
+<pre><code>headache -&gt; take Aspirin
+fever    -&gt; take Paracetamol
+alias    -&gt; take Paracetamol
+</code></pre>
+<p>注意 <code>Acetaminophen</code> 与 <code>Paracetamol</code> 同值，两者都被映射到 <code>"Paracetamol"</code>——stringer 能正确处理同值枚举。</p>
+<p>生成的 <code>pill_string.go</code> 里，<code>stringer</code> 自动写好了 <code>func (i Pill) String() string</code>，用一张名字表 + 偏移表实现，既快又不会因为加枚举而漏改——因为<strong>每次重新 <code>go generate</code> 都会按当前定义重算</strong>。</p>
+<p>整个流程长这样：</p>
+<div class="mermaid">
+flowchart LR
+    A[&quot;源码 main.go&lt;br&gt;含 //go:generate 指令&quot;] --&gt; B[&quot;go generate ./...&quot;]
+    B --&gt; C[&quot;扫描指令&lt;br&gt;定位 stringer&quot;]
+    C --&gt; D[&quot;运行 stringer&lt;br&gt;-type=Pill&quot;]
+    D --&gt; E[&quot;生成 pill_string.go&quot;]
+    E --&gt; F[&quot;编译并运行&quot;]
+</div>
+<p>⚠️ 上例用 <code>go run golang.org/x/tools/cmd/stringer@latest</code> 是为了<strong>不预先全局安装</strong> stringer，首次运行会临时下载。若想固定版本、提速，可先 <code>go install golang.org/x/tools/cmd/stringer@latest</code>，再把指令写成 <code>//go:generate stringer -type=Pill</code>。</p>
+<hr />
+<h2>🎯 功能特性一览</h2>
+<p>把 go generate 的能力摊开看：</p>
+<ul>
+<li><strong>指令即注释</strong>：生成逻辑写在源码里，和定义贴在一起，一眼就能看出"这个文件靠什么生成"。</li>
+<li><strong>统一入口</strong>：不管背后是 stringer、protoc 还是自写脚本，对外都是 <code>go generate</code>，团队不需要记一堆命令。</li>
+<li><strong>按包扫描</strong>：默认处理当前包；<code>go generate ./...</code> 递归处理整个模块的所有包。</li>
+<li><strong>实用 flag</strong>：</li>
+<li><code>-n</code>：只打印将要执行的命令，<strong>不真正执行</strong>（先预览）。</li>
+<li><code>-x</code>：执行的同时打印每条命令（调试生成过程）。</li>
+<li><code>-v</code>：打印正在处理的包名。</li>
+<li><code>-run &lt;正则&gt;</code>：只执行<strong>整条指令文本</strong>匹配正则的那些（按部分匹配，不只是命令名），比如 <code>-run stringer</code> 会命中所有文本里含 "stringer" 的指令；另有 <code>-skip &lt;正则&gt;</code> 可跳过匹配的指令。</li>
+<li><strong>目录隔离</strong>：每条指令在各自源文件所在目录执行，生成物天然归位到对应包。</li>
+<li><strong>生成物进仓库</strong>：go generate 的设计意图是——<strong>生成的代码要提交到版本库</strong>，别人 clone 下来不用再装一遍工具就能直接编译。约定生成文件开头写一行 <code>// Code generated by ...; DO NOT EDIT.</code>，让人和工具都能认出"这是生成物、别手改"。</li>
+</ul>
+<hr />
+<h2>💡 能解决什么问题</h2>
+<p>回看开头那些痛点，go generate 是这样收拾的：</p>
+<ul>
+<li><strong>消灭手写样板</strong>：枚举 <code>String()</code>、序列化代码、Mock、解析器，统统由工具生成。</li>
+<li><strong>消除定义漂移</strong>：定义和样板从同一处派生，改了定义，重新 <code>go generate</code> 一次到位，不再靠人记着同步。</li>
+<li><strong>关注点分离</strong>：生成逻辑集中在工具里，业务代码保持干净；想换生成策略，改指令或工具即可。</li>
+<li><strong>统一团队流程</strong>：一条 <code>go generate ./...</code> 替代每个人各搞一套脚本，新人也能一键复现。</li>
+<li><strong>可追溯、可 diff</strong>：生成文件进仓库，PR 里能看到"因为枚举加了值，生成代码相应变化"，审查更清晰。</li>
+</ul>
+<hr />
+<h2>🌐 典型应用场景</h2>
+<p>go generate 在 Go 生态里无处不在，下面是高频场景：</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>常用工具</th>
+<th>指令示例</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>枚举字符串化</td>
+<td><code>stringer</code></td>
+<td><code>//go:generate stringer -type=Status</code></td>
+<td>自动生成 <code>String()</code></td>
+</tr>
+<tr>
+<td>Protobuf / gRPC</td>
+<td><code>protoc</code> + 插件</td>
+<td><code>//go:generate protoc --go_out=. api.proto</code></td>
+<td>生成消息与 stub</td>
+</tr>
+<tr>
+<td>单元测试 Mock</td>
+<td><code>mockgen</code>（gomock）</td>
+<td><code>//go:generate mockgen -source=svc.go</code></td>
+<td>生成接口 Mock</td>
+</tr>
+<tr>
+<td>高性能序列化</td>
+<td><code>msgp</code> / <code>easyjson</code></td>
+<td><code>//go:generate msgp -file=types.go</code></td>
+<td>生成编解码代码</td>
+</tr>
+<tr>
+<td>词法/语法分析器</td>
+<td><code>goyacc</code> / <code>ragel</code></td>
+<td><code>//go:generate goyacc -o expr.go expr.y</code></td>
+<td>由文法生成解析器</td>
+</tr>
+<tr>
+<td>常量 → 文档/SQL</td>
+<td>自写小工具</td>
+<td><code>//go:generate go run gen.go</code></td>
+<td>由代码生成配套资源</td>
+</tr>
+</tbody>
+</table>
+<p>📌 判断要不要用 go generate，可以问自己三件事：</p>
+<ol>
+<li><strong>是不是机械翻译</strong>？从一份定义（枚举、接口、proto）能确定性地推出另一份代码？是才值得生成；纯业务逻辑别硬套。</li>
+<li><strong>是不是重复且易漏</strong>？只出现一次的小转换，手写可能更轻；反复出现、容易忘改的，才上生成。</li>
+<li><strong>要不要外部工具</strong>？如果生成需要 protoc、yacc 这类独立程序，go generate 就是把它们串进构建流程的那根线。</li>
+</ol>
+<p>三问里"机械 + 重复 + 靠工具"，才是 go generate 的主场。</p>
+<hr />
+<h2>💻 实战：protoc 与 mockgen 长什么样</h2>
+<p>光看 stringer 不够，再看两个真实项目里最常见的指令写法。</p>
+<p><strong>Protobuf（一条指令写一行，单命令不需要 shell）</strong></p>
+<pre><code class="language-go">//go:generate protoc --go_out=. --go-grpc_out=. --go-grpc_opt=paths=source_relative api/proto/service.proto
+</code></pre>
+<p>💡 一条 <code>//go:generate</code> 只能写在一行里；go generate 会把空格分隔的 token、以及双引号字符串各自作为独立参数传给命令，所以上面这条<strong>不包 shell 也能跑</strong>。只有当你需要管道、重定向、<code>&amp;&amp;</code>、通配符这类 <strong>shell 特性</strong>时，才显式包一层：<code>//go:generate sh -c "protoc ... &amp;&amp; go fmt ./..."</code>。注意它不支持注释续行——硬换行只会让后半段变成普通注释。</p>
+<p><strong>Mockgen（接口 Mock，单测必备）</strong></p>
+<pre><code class="language-go">//go:generate mockgen -source=order_service.go -destination=mocks/order_service_mock.go -package=mocks
+</code></pre>
+<p>执行 <code>go generate ./...</code> 后，<code>mocks/</code> 下就多出接口的实现，单测里直接 <code>NewMockOrderService</code> 注入即可，接口一改重新生成，Mock 永远同步。</p>
+<hr />
+<h2>🚧 局限性与踩坑</h2>
+<p>go generate 很香，但它<strong>不是银弹</strong>，官方也反复强调它的边界。</p>
+<p>用之前先认清这几条底线：</p>
+<ul>
+<li>
+<p><strong>不会自动跑</strong>：<code>go generate</code> <strong>不会</strong>在 <code>go build</code> / <code>go test</code> / <code>go run</code> 里自动触发，必须你显式执行。忘了跑，代码就悄悄过期。<br />
+  💡 缓解：把 <code>go generate ./...</code> 放进 <code>Makefile</code>、pre-commit 钩子，或 CI 里校验"生成物是否最新"（比对生成前后 git diff 是否干净）。</p>
+</li>
+<li>
+<p><strong>没有依赖追踪</strong>：go generate 不知道"输入变了要不要重生成"，它只管执行指令。改了 proto 但没重新 generate，编译照样过、运行却用旧结构。<br />
+  💡 缓解：和上面一样，靠流程约束，而不是工具自动判断。</p>
+</li>
+<li>
+<p><strong>命令必须可用</strong>：指令里调用的 stringer / protoc / mockgen 得装好或能 <code>go run</code> 拉到。用 <code>go run pkg@version</code> 虽然免安装，但<strong>首次运行要联网下载</strong>，离线环境下会卡住。</p>
+</li>
+<li>
+<p><strong>执行任意命令 = 安全风险</strong>：<code>go generate</code> 本质是"把指令注释里的命令直接执行掉"。对<strong>不信任的代码</strong>执行 <code>go generate</code>，可能触发恶意命令——这会导致供应链攻击。<br />
+  ⚠️ 跑别人的 <code>go generate</code> 前，先 <code>git grep 'go:generate'</code> 看一眼指令内容，如果跑在CI 里则更要谨慎。</p>
+</li>
+<li>
+<p><strong>指令语法很挑剔</strong>：<code>//go:generate</code> 必须紧贴行首、只能是 <code>//</code> 单行、不支持块注释。缩进一格就失效，且<strong>不会报错</strong>——只是 silently 不执行，排查起来很懵。</p>
+</li>
+<li><strong>不经 shell，特性受限</strong>：指令由 go generate 自己分词后直接执行，不经过 shell，所以管道、重定向、<code>&amp;&amp;</code>、通配符默认用不了，需要时显式 <code>sh -c "..."</code>。环境变量由 go generate 展开（任何 <code>$NAME</code>，未设置会变空串），要给生成器传字面 <code>$</code> 得写成 <code>$DOLLAR</code>。</li>
+<li><strong>生成文件要进仓库</strong>：不提交，别人编译会缺文件；提交了，又得保证随时能重新生成。对"不愿把生成物入库"的团队，go generate 的默认约定会不太顺手。</li>
+<li><strong>报错指向生成文件</strong>：编译错误出现在 <code>xxx_string.go</code> 这种生成文件里，而不是你的源码，定位时要心里有数——别去手改生成文件（那会被下次 generate 覆盖）。</li>
+</ul>
+<hr />
+<h2>🚀 进阶：把生成器本身也管起来</h2>
+<p><strong>完整实战：自定义 generator + text/template 生成 HTML</strong></p>
+<p>stringer、protoc 都是"别人写好的工具"。</p>
+<p>但很多时候生成逻辑是项目特有的——比如把一份数据渲染成 HTML 页面。</p>
+<p>这时就自己写一个 generator，配合标准库 <code>text/template</code> 就能搞定。</p>
+<p>看一个完整可跑的例子：<strong>读一份 JSON 数据，用模板渲染出一个静态 HTML 导航页</strong>。</p>
+<p>四个文件各司其职：</p>
+<table>
+<thead>
+<tr>
+<th>文件</th>
+<th>角色</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>data.json</code></td>
+<td>数据源（权威定义，改完重新 generate 即可）</td>
+</tr>
+<tr>
+<td><code>page.tmpl</code></td>
+<td><code>text/template</code> 模板</td>
+</tr>
+<tr>
+<td><code>gen.go</code></td>
+<td>自定义 generator（用 <code>//go:build ignore</code> 排除出正常构建）</td>
+</tr>
+<tr>
+<td><code>main.go</code></td>
+<td>业务代码，<code>//go:generate</code> 指令的宿主</td>
+</tr>
+</tbody>
+</table>
+<p>数据源 <code>data.json</code>（节选 2 条，仓库里共 5 条）：</p>
+<pre><code class="language-json">[
+  {&quot;name&quot;: &quot;Go 官网&quot;, &quot;url&quot;: &quot;https://go.dev&quot;, &quot;desc&quot;: &quot;Go 语言官方网站&quot;},
+  {&quot;name&quot;: &quot;Go Playground&quot;, &quot;url&quot;: &quot;https://go.dev/play/&quot;, &quot;desc&quot;: &quot;浏览器里在线运行 Go 代码&quot;}
+]
+</code></pre>
+<p>模板 <code>page.tmpl</code>，用 <code>{{range}}</code> 把每条数据渲染成一个 <code>&lt;li&gt;</code>：</p>
+<pre><code class="language-html">&lt;h1&gt;{{.Title}}&lt;/h1&gt;
+&lt;p&gt;共收录 {{len .Links}} 个资源 ｜ 生成时间：{{.GeneratedAt}}&lt;/p&gt;
+&lt;ul&gt;
+{{- range .Links}}
+  &lt;li&gt;&lt;a href=&quot;{{.URL}}&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;{{.Name}}&lt;/a&gt; — {{.Desc}}&lt;/li&gt;
+{{- end}}
+&lt;/ul&gt;
+</code></pre>
+<p>核心是这个自定义 generator <code>gen.go</code>。注意第一行的 <code>//go:build ignore</code>——它让 <code>go build .</code> 跳过本文件，所以 <code>gen.go</code> 和 <code>main.go</code> 可以同在 <code>package main</code>、各有一个 <code>main()</code> 也不冲突：</p>
+<pre><code class="language-go">//go:build ignore
+
+package main
+
+import (
+    &quot;encoding/json&quot;
+    &quot;log&quot;
+    &quot;os&quot;
+    &quot;text/template&quot;
+    &quot;time&quot;
+)
+
+// Link 是数据源 data.json 里的一条记录。
+type Link struct {
+    Name string `json:&quot;name&quot;`
+    URL  string `json:&quot;url&quot;`
+    Desc string `json:&quot;desc&quot;`
+}
+
+type pageData struct {
+    Title       string
+    Links       []Link
+    GeneratedAt string
+}
+
+func check(err error) {
+    if err != nil {
+        log.Fatal(err)
+    }
+}
+
+func main() {
+    raw, err := os.ReadFile(&quot;data.json&quot;)   // 1. 读数据源
+    check(err)
+    var links []Link
+    check(json.Unmarshal(raw, &amp;links))
+
+    tmpl, err := template.ParseFiles(&quot;page.tmpl&quot;)  // 2. 解析模板
+    check(err)
+
+    out, err := os.Create(&quot;index.html&quot;)    // 3. 创建产物
+    check(err)
+    defer out.Close()
+
+    check(tmpl.Execute(out, pageData{      // 4. 渲染写入
+        Title:       &quot;Go 学习资源导航&quot;,
+        Links:       links,
+        GeneratedAt: time.Now().Format(&quot;2006-01-02 15:04:05&quot;),
+    }))
+    log.Printf(&quot;generated index.html (%d links)\n&quot;, len(links))
+}
+
+
+</code></pre>
+<p>业务侧的 <code>main.go</code> 只需留一条指令（它自己的 <code>main()</code> 与 generator 互不影响）：</p>
+<pre><code class="language-go">package main
+
+//go:generate go run gen.go
+
+func main() { /* ...验证 index.html 已生成... */ }
+</code></pre>
+<p>跑起来：</p>
+<pre><code class="language-bash">go generate ./...   # 触发 gen.go，渲染出 index.html
+go run .            # 或 go build .；gen.go 因 ignore 不参与构建
+</code></pre>
+<p>generator 的日志输出：</p>
+<pre><code>2026/07/27 23:35:20 generated index.html (5 links)
+</code></pre>
+<p>生成的 <code>index.html</code>（节选）：</p>
+<pre><code class="language-html">&lt;h1&gt;Go 学习资源导航&lt;/h1&gt;
+&lt;p&gt;共收录 5 个资源 ｜ 本页由 go generate 自动生成 ｜ 生成时间：2026-07-27 23:35:20&lt;/p&gt;
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://go.dev&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;Go 官网&lt;/a&gt; — Go 语言官方网站&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://go.dev/play/&quot; target=&quot;_blank&quot; rel=&quot;noopener&quot;&gt;Go Playground&lt;/a&gt; — 浏览器里在线运行 Go 代码&lt;/li&gt;
+  &lt;!-- 其余 3 条略 --&gt;
+&lt;/ul&gt;
+</code></pre>
+<p>⚠️ 两个容易踩的点，都实测验证过：</p>
+<ul>
+<li><strong><code>go run gen.go</code> 能跑带 <code>//go:build ignore</code> 的文件</strong>。<code>ignore</code> 只约束 <code>go build .</code> 这类"包级构建"，显式点名 <code>go run gen.go</code> 不受限，所以这条指令是成立的。</li>
+<li><strong>generator 的工作目录是它所在包的目录</strong>（前面"工作机制"讲过），所以 <code>gen.go</code> 里用相对路径 <code>data.json</code> / <code>page.tmpl</code> / <code>index.html</code> 都能对上。</li>
+</ul>
+<p>这条链路把前面的知识点全串起来了：<code>//go:generate</code> 指令 → <code>go run</code> 拉起自定义 generator → <code>text/template</code> 渲染 → 产物入库。数据源改了？重新 <code>go generate ./...</code> 一次，HTML 就同步了。</p>
+<p><strong>和 CI 配合做"新鲜度校验"</strong></p>
+<p>在 CI 里跑一遍 <code>go generate ./...</code>，再 <code>git diff --exit-code</code>：如果有任何生成文件和生产物不一致（说明有人改了定义却忘了重新生成），那就直接让流水线失败。</p>
+<p><strong><code>go generate</code> vs 真·构建时生成</strong></p>
+<p>go generate 是"预先生成、提交产物"的流派。</p>
+<p>如果你想要"编译时才生成、不入库"，那更适合用 <code>go:embed</code>、代码生成插件或构建脚本，而非 go generate。</p>
+<p>选哪个，看团队对"生成物是否入库"的偏好。</p>
+<hr />
+<h2>📌 小结</h2>
+<ul>
+<li><strong>是什么</strong>：go generate 是源码里的"指令调度器"，靠 <code>//go:generate 命令</code> 注释 + <code>go generate</code> 命令，把 stringer / protoc / mockgen 等工具的代码生成串成统一流程。<strong>它不生成代码，它调度生成。</strong></li>
+<li><strong>功能特性</strong>：指令即注释、统一入口、按包扫描（<code>./...</code>）、<code>-n/-x/-v/-run</code> 等实用 flag、生成物进仓库。</li>
+<li><strong>解决什么</strong>：消灭手写样板、消除定义漂移、关注点分离、统一团队生成流程、生成物可 diff 可追溯。</li>
+<li><strong>局限性</strong>：不自动触发、无依赖追踪、命令须可用、执行任意命令有安全风险、语法挑剔易静默失效、不经 shell 导致管道/通配符等用不了、生成物需入库。</li>
+<li><strong>什么时候用</strong>：机械、重复、靠外部工具的"定义→代码"翻译场景（枚举、proto、Mock、解析器）；纯逻辑别硬套。</li>
+<li><strong>怎么用</strong>：<code>//go:generate</code> 紧贴行首写指令 → <code>go generate ./...</code> 执行 → 把产物提交仓库。配合 Makefile / pre-commit / CI 校验新鲜度，才算真正用稳。</li>
+</ul>
+<p>如果你正打算"为了接个库 / 加个枚举 / 补个 Mock 改一堆样板文件"，那么可以先停下来思考一下，因为多半可以写一条 <code>//go:generate</code>，就能让工具替你把重复活干完。</p>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库 <a href="https://github.com/os-artificer/ebooks">os-artificer/ebooks</a>，含两个独立示例：</p>
+<ul>
+<li><code>src/golang/generate/</code>——stringer 生成枚举 <code>String()</code>。进入该目录，先执行 <code>go generate ./...</code> 生成 <code>pill_string.go</code>，再执行 <code>go run .</code>（或 <code>go build</code>）即可运行。</li>
+<li><code>src/golang/generate-html/</code>——自定义 generator + <code>text/template</code> 生成 HTML。进入该目录，执行 <code>go generate ./...</code> 生成 <code>index.html</code>，用浏览器打开即可查看（<code>go run .</code> 可验证产物已就位）。</li>
+</ul>
+<p>文中的代码片段为<strong>说明原理的伪代码或节选</strong>，正式可编译版本请查看对应目录下的 <code>.go</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
