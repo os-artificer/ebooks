@@ -475,25 +475,18 @@ def deco_lines_for_lang(lang_label: str) -> str:
     if lang_label == "Go":
         return (
             "package main\n\n"
-            "import (\n"
-            '    "context"\n'
-            ")\n\n"
-            "// supervisor <-> worker\n"
-            "func run(ctx context.Context) {\n"
-            "    select {\n"
-            "    case <-ctx.Done():\n"
-            "        return\n"
-            "    }\n"
+            "import \"fmt\"\n\n"
+            "func main() {\n"
+            "    // example run\n"
+            "    fmt.Println(\"hello\")\n"
             "}"
         )
     if lang_label == "C++":
         return (
-            "#include <thread>\n\n"
-            "class Pool {\n"
+            "#include <iostream>\n\n"
+            "class Pattern {\n"
             "public:\n"
-            "    void submit(Task t);\n"
-            "private:\n"
-            "    std::mutex mu_;\n"
+            "    virtual void run() = 0;\n"
             "};"
         )
     return (
