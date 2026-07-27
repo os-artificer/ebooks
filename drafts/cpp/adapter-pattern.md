@@ -22,7 +22,7 @@ public:
 };
 
 void clientCode(LegacySensor& legacy) {
-    // 每处调用都要手写单位换算 + 方法名映射
+    // 每处调用都要手写单位换算，还得记住它叫 getFahrenheit（而不是项目里的 readCelsius）
     double c = (legacy.getFahrenheit() - 32.0) * 5.0 / 9.0;
     std::cout << "温度: " << c << " °C\n";
 }
@@ -354,6 +354,7 @@ public:
 ```
 
 好处：无间接、不持有引用、代码更短。
+
 代价：侵入性强——`LegacySensor` 必须可继承（非 `final`）、其公有接口被"吸"进 Adapter（私有继承能挡掉一部分）、且**无法适配 `LegacySensor` 的子类**（继承在编译期钉死类型）。大多数 C++ 项目里，对象适配器（组合）更受青睐。
 
 ### 用模板 + 概念做"无继承适配"（C++20）
@@ -378,11 +379,13 @@ double toCelsius(const Sensor& s) {
 - **外观（Facade）**：给**一群**子系统提供一个简化接口，目的是"简化"；适配器是给**一个**类换接口，目的是"兼容"。
 - **桥接（Bridge）**：把"抽象"和"实现"在两头都设成可扩展，目的是"运行时可换实现"；适配器是事后补救"已有接口不兼容"，桥接是事先就设计成可插拔。
 
-一句话：适配器是**接旧账**，桥接是**铺新路**，外观是**包大块**。
+心法口诀：适配器是**接旧账**，桥接是**铺新路**，外观是**包大块**。
 
 ### 适配器链（Adapter Chain）
 
-多个不兼容层叠在一起时，可以把适配器串成链：A 的 Target 接口由适配器 B 实现，B 内部又适配 C……每层只翻译自己那一段。注意链别太长（超过 3 层就该怀疑是不是设计错了），否则排查翻译错误会非常痛苦。
+多个不兼容层叠在一起时，可以把适配器串成链：A 的 Target 接口由适配器 B 实现，B 内部又适配 C……每层只翻译自己那一段。
+
+注意链别太长（超过 3 层就该怀疑是不是设计错了），否则排查翻译错误会非常痛苦。
 
 ---
 
@@ -398,6 +401,8 @@ double toCelsius(const Sensor& s) {
 
 ---
 
-**完整可运行示例代码**：本文所有代码均已上传至 GitHub 仓库 [os-artificer/ebooks](https://github.com/os-artificer/ebooks)，位于 `src/cpp/design-mode/` 目录。进入 `src/cpp/` 目录执行 `make bin/adapter_demo` 即可编译本示例（或执行 `make` 编译全部示例）。文中的代码片段为**说明原理的伪代码**，正式可编译版本请查看 `src/cpp/design-mode/` 下对应的 `.cpp` 文件。
+**完整可运行示例代码**：本文所有代码均已上传至 GitHub 仓库 [os-artificer/ebooks](https://github.com/os-artificer/ebooks)，位于 `src/cpp/design-mode/` 目录。
+进入 `src/cpp/` 目录执行 `make bin/adapter_demo` 即可编译本示例（或执行 `make` 编译全部示例）。
+文中的代码片段为**说明原理的伪代码**，正式可编译版本请查看 `src/cpp/design-mode/` 下对应的 `.cpp` 文件。
 
 本文首发于公众号 **Artificer老王的学习笔记**，转载请注明出处。

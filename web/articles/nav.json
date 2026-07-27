@@ -7,6 +7,10 @@
       "summaryClass": "nav-category--cpp",
       "items": [
         {
+          "href": "./page/cpp/adapter-pattern.html",
+          "text": "C++ 设计模式实践：适配器模式——让不兼容的接口握手言和"
+        },
+        {
           "href": "./page/cpp/bad-case.html",
           "text": "#1：使用未初始化变量（读取垃圾值 / UB）"
         },
