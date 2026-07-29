@@ -227,6 +227,12 @@ __XHS_LOCAL_FONTS__
     display: block;
     overflow-x: auto;
   }}
+  img {{
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 18px 0;
+  }}
   p code, li code, td code {{
     font-size: 24px;
     background: rgba(0,0,0,0.06);
