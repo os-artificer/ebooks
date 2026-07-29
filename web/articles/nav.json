@@ -87,6 +87,10 @@
           "text": "Go 工程化实战：go generate——少写样板代码，让工具替你干活"
         },
         {
+          "href": "./page/golang/go-perf-bottleneck.html",
+          "text": "Go 服务性能瓶颈分析：从现象到根因的一套诊疗方法"
+        },
+        {
           "href": "./page/golang/safe-package-panic-recovery-in-depth.html",
           "text": "一、问题背景：为什么需要统一的 Panic 防护？"
         },
