@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""在 drafts 下 Markdown 的一级标题后插入作者与「更新时间」（取文件创建时间）。"""
+"""在 notes 下 Markdown 的一级标题后插入作者与「更新时间」（取文件创建时间）。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DRAFTS = ROOT / "drafts"
+DRAFTS = ROOT / "notes"
 AUTHOR = "Artificer老王"
 MARKER = f"**作者：**{AUTHOR}"
 
@@ -87,7 +87,7 @@ def process_file(path: Path, *, force: bool) -> bool:
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser(description="为 drafts/*.md 标题下增加作者与更新时间（文件创建时间）。")
+    ap = argparse.ArgumentParser(description="为 notes/*.md 标题下增加作者与更新时间（文件创建时间）。")
     ap.add_argument(
         "--force",
         action="store_true",

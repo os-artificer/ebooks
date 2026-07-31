@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 设计模式实践：策略模式——把"选算法"交给运行时</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 设计模式实践：策略模式——把"选算法"交给运行时</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-07-30  |  阅读时长：约 13 分钟</p>
+<p>你有没有写过这样的代码：一个类里根据 <code>type</code> 字段用一长串 <code>if-else</code> 或 <code>switch</code> 选不同算法——排序用快排还是堆排、压缩用 gzip 还是 zip、折扣用满减还是打折、导航用最短路径还是躲避拥堵。每加一种算法，就得在十几个函数里各加一个分支？</p>
+<p>你有没有遇过这种尴尬：算法实现散落在 N 个分支里，测试要覆盖每种组合，改一个算法怕牵动其他分支，加一个新算法得翻遍整个类。</p>
+<p><strong>策略模式（Strategy Pattern）</strong> 就是专门收拾这种"一族算法要可互换、可切换"场面的——它把一族算法分别封装成独立、可互换的策略对象，让算法的变化独立于使用它的客户端，客户端要换算法时，只换一个策略对象即可。</p>
+<hr />
+<h2>🕳️ 先看问题：用 if-else 选算法</h2>
+<p>假设订单要根据不同促销类型算最终价格。最直接的写法，是在 <code>Order</code> 里用 <code>if-else</code> 硬选：</p>
+<pre><code class="language-cpp">// 反面教材：在 Context 里用 if-else 硬选行为
+class Order {
+    double _amount;
+    std::string _promoType; // &quot;none&quot; / &quot;percent&quot; / &quot;threshold&quot; / &quot;fixed&quot;
+    double _rate, _threshold, _minus;
+public:
+    double checkout() const {
+        if (_promoType == &quot;none&quot;)         return _amount;
+        else if (_promoType == &quot;percent&quot;) return _amount * _rate;
+        else if (_promoType == &quot;threshold&quot;)
+            return _amount &gt;= _threshold ? _amount - _minus : _amount;
+        else if (_promoType == &quot;fixed&quot;)
+            return _amount &gt; _minus ? _amount - _minus : 0.0;
+        return _amount;
+    }
+};
+</code></pre>
+<p>问题在哪儿？</p>
+<ul>
+<li><strong>违反开闭原则</strong>：加一种新促销（如"拼团价"），必须改 <code>checkout()</code> 这个大函数，改动面大、易错。</li>
+<li><strong>算法与数据耦合在一个类</strong>：行为（<code>percent</code>/<code>threshold</code> 的算法）和状态（<code>_rate</code>/<code>_threshold</code> 参数）全塞进 <code>Order</code>，类越来越胖。</li>
+<li><strong>分支爆炸</strong>：每加一个算法，所有用到促销的地方都要同步加分支，测试组合指数级增长。</li>
+<li><strong>无法独立测试算法</strong>：想单测"满减"逻辑，得构造一个 <code>Order</code> 并设对它的一堆字段，不能单独拎出来测。</li>
+</ul>
+<p>问题的本质：<strong>一个会变化的"行为/算法"，被钉死在 <code>if-else</code> 里、和 Context 绑在一起了</strong>。策略模式要做的，就是把这族行为"拎出来"封装成独立对象，让 Context 只持有"当前用的那个"，随时可换。</p>
+<hr />
+<h2>🧩 策略模式是什么</h2>
+<h3>核心思想</h3>
+<p><strong>定义一族算法，把它们各自封装成可互换的策略对象，让算法的变化独立于使用它的客户端。</strong></p>
+<p><strong>"把选算法的决定，从一长串 if-else，变成一个可替换的对象。"——Context 持有策略，运行时换策略，不用改 Context 一行代码。</strong></p>
+<p>对比一下：</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>本质</th>
+<th>加新算法的代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>调用方 if-else</td>
+<td>把行为写死在 Context 的分支里</td>
+<td>改 Context 大函数（N 处分支）</td>
+</tr>
+<tr>
+<td>策略模式</td>
+<td>把每个行为封装成独立策略类</td>
+<td>只加一个策略类（1 处），Context 不动</td>
+</tr>
+</tbody>
+</table>
+<h3>策略模式的三个核心角色</h3>
+<p>策略模式只有三个角色，关系非常清晰：</p>
+<ul>
+<li><strong>Strategy（策略接口）</strong>：定义这族算法的统一接口（一个纯虚函数，比如 <code>calc()</code>）。所有具体算法都实现它。</li>
+<li><strong>ConcreteStrategy（具体策略）</strong>：实现 <code>Strategy</code> 接口的具体算法，比如"打折""满减""直减"。各自独立、互不相识。</li>
+<li><strong>Context（上下文）</strong>：持有一个 <code>Strategy</code> 引用，把"需要算法"的请求委派给它；自身不关心算法细节，只管换策略、调策略。</li>
+</ul>
+<p>关键点：<strong>具体策略之间互不相识、互不依赖</strong>——它们不知道彼此存在，也不知道自己会被谁用。Context 或客户端负责"选哪个"，策略只管"把这一件事做好"。</p>
+<hr />
+<h2>🗺️ UML 类关系图</h2>
+<p>下面是策略模式的结构类图。</p>
+<p><code>Order</code>（Context）持有 <code>DiscountStrategy</code>（Strategy）的引用；四个具体策略各自实现 <code>Strategy</code>；运行时 <code>Order</code> 把 <code>checkout()</code> 委派给当前持有的策略。</p>
+<div class="mermaid">
+classDiagram
+    class DiscountStrategy {
+        &lt;&lt;Interface&gt;&gt;
+        +calc(double): double
+        +name() : string
+    }
+    class Order {
+        -DiscountStrategy strategy
+        +Order(double, DiscountStrategy): void
+        +setStrategy(DiscountStrategy): void
+        +checkout() : double
+    }
+    class NoDiscount {
+        +calc(double): double
+        +name() : string
+    }
+    class PercentageDiscount {
+        -double rate
+        +PercentageDiscount(double): void
+        +calc(double): double
+        +name() : string
+    }
+    class ThresholdDiscount {
+        -double threshold
+        -double minus
+        +ThresholdDiscount(double, double): void
+        +calc(double): double
+        +name() : string
+    }
+    class FixedDiscount {
+        -double minus
+        +FixedDiscount(double): void
+        +calc(double): double
+        +name() : string
+    }
+    DiscountStrategy &lt;|.. NoDiscount
+    DiscountStrategy &lt;|.. PercentageDiscount
+    DiscountStrategy &lt;|.. ThresholdDiscount
+    DiscountStrategy &lt;|.. FixedDiscount
+    Order --&gt; DiscountStrategy
+</div>
+<p>再看一张时序图，看清"委派"是怎么发生的——客户端调 Context，Context 把活儿转给当前策略：</p>
+<div class="mermaid">
+sequenceDiagram
+    participant C as Client
+    participant O as Order(Context)
+    participant S as DiscountStrategy
+    C-&gt;&gt;O: setStrategy(打折)
+    C-&gt;&gt;O: checkout()
+    O-&gt;&gt;S: calc(原价)
+    S--&gt;&gt;O: 折后价
+    O--&gt;&gt;C: 实付金额
+</div>
+<p>两张图配合看：类图是"静态结构"——谁持有谁、谁实现谁；时序图是"动态行为"——一次 <code>checkout()</code> 如何穿过 Context 落到具体策略上。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>消除巨型条件分支，符合开闭原则</h3>
+<p>新增一种算法 = 新增一个 ConcreteStrategy 类，Context 一行不动。加算法不碰老代码，符合"对扩展开放、对修改关闭"。</p>
+<h3>算法可独立测试、独立复用</h3>
+<p>每个策略是自包含的纯函数式对象，可以脱离 Context 单独单测、单独复用（同一个"满减"策略，订单、购物车、营销活动都能用）。</p>
+<h3>运行时自由切换</h3>
+<p>策略对象可以在运行时替换（用户切换优惠、系统按配置挑压缩算法），Context 不需要重新编译、不需要改分支。</p>
+<h3>消除重复，避免"算法 + 数据"大杂烩</h3>
+<p>算法的参数和行为封装在策略里，Context 只保留"领域状态"（如订单金额），不再背着一堆算法参数变胖。</p>
+<hr />
+<h2>🌐 典型应用场景</h2>
+<p>策略模式适用于"手上有一族<strong>可互换</strong>的算法/行为，且需要在<strong>运行时选择或切换</strong>"的场景。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>典型 Strategy（算法族）</th>
+<th>典型 Context（使用者）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>排序/选择算法</strong></td>
+<td>快速排序 / 归并排序 / 堆排序</td>
+<td>容器或查询引擎</td>
+</tr>
+<tr>
+<td><strong>压缩/序列化</strong></td>
+<td>gzip / zip / 无压缩</td>
+<td>网络传输层、日志落盘</td>
+</tr>
+<tr>
+<td><strong>促销/计费规则</strong></td>
+<td>满减 / 打折 / 直减 / 拼团</td>
+<td>订单、购物车</td>
+</tr>
+<tr>
+<td><strong>支付方式</strong></td>
+<td>微信 / 支付宝 / 银行卡 / 余额</td>
+<td>收银台</td>
+</tr>
+<tr>
+<td><strong>路由/导航</strong></td>
+<td>最短路径 / 躲避拥堵 / 少收费</td>
+<td>地图导航引擎</td>
+</tr>
+<tr>
+<td><strong>日志级别</strong></td>
+<td>DEBUG / INFO / ERROR 不同输出策略</td>
+<td>日志框架</td>
+</tr>
+</tbody>
+</table>
+<p>📌 <strong>判断要不要用策略模式，可以试着问自己三个问题</strong>：</p>
+<ol>
+<li>是否有一族<strong>可互换</strong>的算法/行为？—— 只有一种、或算法永不换，就别套策略，直接写。</li>
+<li>是否需要在<strong>运行时切换/选择</strong>？—— 编译期就定死（永远只用快排），策略的收益不大。</li>
+<li>是否想摆脱 <code>if-else</code> 分支、让加算法符合<strong>开闭原则</strong>？—— 如果算法频繁增减、且当前散落在一堆分支里，策略模式的正收益才明显；只偶尔选一次的话，一个 <code>if</code> 也挺香。</li>
+</ol>
+<p>三问里"一族可互换 + 运行时切换 + 想开闭"都满足，才上策略。</p>
+<hr />
+<h2>💻 C++ 实现实践</h2>
+<h3>场景设定：订单的促销折扣策略</h3>
+<p>我们用电商订单做演示——一笔订单要算最终价格，促销类型可能是"无折扣 / 打折 / 满减 / 直减"。</p>
+<p>我们把每种促销封装成一个策略，订单（<code>Order</code>）持有当前策略，结算时委派给它。</p>
+<p>接口与角色：</p>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>DiscountStrategy</strong>（Strategy）</td>
+<td>接口</td>
+<td>统一算法接口：<code>calc(原价)</code> 返回折后价</td>
+</tr>
+<tr>
+<td><strong>NoDiscount / Percentage / Threshold / Fixed</strong>（ConcreteStrategy）</td>
+<td>具体策略</td>
+<td>四种折扣算法，各自独立、互不相识</td>
+</tr>
+<tr>
+<td><strong>Order</strong>（Context）</td>
+<td>上下文</td>
+<td>持有当前策略，<code>checkout()</code> 委派给策略，可<code>setStrategy</code>运行时切换</td>
+</tr>
+</tbody>
+</table>
+<h3>伪代码骨架</h3>
+<p>先看骨架，理解结构：</p>
+<pre><code class="language-cpp">// ---- 策略接口 ----
+class DiscountStrategy {
+public:
+    virtual double calc(double original) const = 0;   // 输入原价，返回折后价
+};
+
+// ---- 具体策略（各自独立）----
+class PercentageDiscount : public DiscountStrategy {
+    double _rate;
+public:
+    double calc(double original) const override { return original * _rate; }
+};
+
+// ---- 上下文：持有并委派给策略 ----
+class Order {
+    DiscountStrategy* _strategy;   // 持有当前策略
+    double _amount;
+public:
+    double checkout() const {
+        return _strategy-&gt;calc(_amount);   // 委派，不关心具体算法
+    }
+};
+</code></pre>
+<p>核心模式就这几行：<strong>Strategy 定义统一接口、ConcreteStrategy 各自实现、Context 持有引用并把请求委派过去</strong>。</p>
+<h3>关键实现决策</h3>
+<p>在写完整代码之前，有几个工程决策值得展开讲。</p>
+<p><strong>🔧 决策：策略接口怎么设计（入参 / 返回）？</strong></p>
+<ul>
+<li><strong>纯函数式</strong>：<code>calc(double) -&gt; double</code>。最简单，策略无状态、像纯函数。上面 demo 用这种——折扣只看原价，不依赖订单其他字段。</li>
+<li><strong>带着上下文</strong>：<code>calc(const Order&amp;) -&gt; double</code>。当算法需要订单的多种信息（商品列表、会员等级、地区）时，把 Context 传进去。代价是策略会依赖 Context 类型，耦合略升。原则：<strong>接口只传算法真正需要的，别为了省事把整个 Context 丢进去</strong>。</li>
+</ul>
+<p><strong>🔧 决策：谁持有并切换策略？</strong></p>
+<ul>
+<li><strong>Context 持有（最常见）</strong>：<code>Order</code> 内部存一个策略指针，<code>setStrategy()</code> 随时换。客户端只跟 Context 打交道。本文 demo 即此。</li>
+<li><strong>客户端持有并传入</strong>：<code>checkout(DiscountStrategy&amp; s)</code>，算法由调用方临时指定、用完即弃。适合"每次调用算法不同、且 Context 不该记得上次用谁"的场景。</li>
+<li><strong>工厂按配置生成</strong>：根据配置文件 / 数据库 / UI 选项，由工厂把字符串名映射成具体策略对象。适合策略很多、由外部驱动选择的场景（见进阶）。</li>
+</ul>
+<p><strong>🔧 决策：策略之间要不要互相知道？</strong></p>
+<p><strong>不要。</strong> 策略彼此独立、无状态依赖、不持有 Context，这是策略模式与状态模式的本质分水岭：</p>
+<ul>
+<li>策略：算法之间互不相识，谁被选中由 Context / 客户端决定，策略自己不切换彼此。</li>
+<li>状态：状态对象<strong>知道下一个状态是谁</strong>，会主动触发状态转换（详见同专栏的状态机模式一文）。</li>
+</ul>
+<p>把策略写成"无状态、可自由替换的纯算法"，才能享受策略模式的最大红利——随时换、随便换。</p>
+<p><strong>🔧 决策：策略对象怎么创建和复用？</strong></p>
+<ul>
+<li><strong>每次 new</strong>：最简单，用完即弃（配合 <code>unique_ptr</code> 自动回收）。</li>
+<li><strong>共享单例 / 池化</strong>：当策略<strong>无状态</strong>（如纯折扣算法），多个 Context 可共享同一个策略实例，省开销。注意：有状态的策略（内部记了计数/缓存）绝不能共享。</li>
+<li><strong>注册表 + 工厂</strong>：把所有策略名和构造器登记到一个 map，运行时按名取。这是"配置驱动选算法"的标准做法，新增算法只需注册一行。</li>
+</ul>
+<h3>完整代码</h3>
+<p>完整可编译代码在 <code>src/cpp/design-mode/strategy_demo.cpp</code>，核心结构如下：</p>
+<pre><code class="language-cpp">#include &lt;cmath&gt;
+#include &lt;iostream&gt;
+#include &lt;memory&gt;
+#include &lt;string&gt;
+
+// ---- Strategy 接口：折扣策略 ----
+class DiscountStrategy {
+public:
+    virtual ~DiscountStrategy() = default;
+    virtual double calc(double original) const = 0;   // 输入原价，返回折后价
+    virtual std::string name() const = 0;
+};
+
+// ---- ConcreteStrategy A：无折扣 ----
+class NoDiscount : public DiscountStrategy {
+public:
+    double calc(double original) const override { return original; }
+    std::string name() const override { return &quot;无折扣&quot;; }
+};
+
+// ---- ConcreteStrategy B：按比例打折（rate = 0.8 表示 8 折）----
+class PercentageDiscount : public DiscountStrategy {
+    double _rate;
+public:
+    explicit PercentageDiscount(double rate) : _rate(rate) {}
+    double calc(double original) const override { return original * _rate; }
+    std::string name() const override {
+        int pct = static_cast&lt;int&gt;(std::lround(_rate * 100.0));
+        return &quot;打折(&quot; + std::to_string(pct) + &quot;%)&quot;;
+    }
+};
+
+// ---- ConcreteStrategy C：满减（满 threshold 减 minus）----
+class ThresholdDiscount : public DiscountStrategy {
+    double _threshold;
+    double _minus;
+public:
+    ThresholdDiscount(double threshold, double minus)
+        : _threshold(threshold), _minus(minus) {}
+    double calc(double original) const override {
+        return original &gt;= _threshold ? original - _minus : original;
+    }
+    std::string name() const override { return &quot;满减&quot;; }
+};
+
+// ---- ConcreteStrategy D：固定直减（不会减成负数）----
+class FixedDiscount : public DiscountStrategy {
+    double _minus;
+public:
+    explicit FixedDiscount(double minus) : _minus(minus) {}
+    double calc(double original) const override {
+        return original &gt; _minus ? original - _minus : 0.0;
+    }
+    std::string name() const override { return &quot;直减&quot;; }
+};
+
+// ---- Context：订单，持有并委派给策略 ----
+class Order {
+    std::unique_ptr&lt;DiscountStrategy&gt; _strategy;
+    double _amount;
+public:
+    Order(double amount, std::unique_ptr&lt;DiscountStrategy&gt; s)
+        : _strategy(std::move(s)), _amount(amount) {}
+
+    void setStrategy(std::unique_ptr&lt;DiscountStrategy&gt; s) {
+        _strategy = std::move(s);   // 运行时切换策略
+    }
+
+    double checkout() const {
+        double final = _strategy-&gt;calc(_amount);
+        std::cout &lt;&lt; &quot;  [&quot; &lt;&lt; _strategy-&gt;name() &lt;&lt; &quot;] 原价 &quot;
+                  &lt;&lt; _amount &lt;&lt; &quot; -&gt; 实付 &quot; &lt;&lt; final &lt;&lt; &quot;\n&quot;;
+        return final;
+    }
+};
+
+int main() {
+    double amount = 200.0;
+    std::cout &lt;&lt; &quot;--- 同一笔订单(原价 &quot; &lt;&lt; amount &lt;&lt; &quot;)，切换不同促销策略 ---\n&quot;;
+
+    Order order(amount, std::make_unique&lt;NoDiscount&gt;());
+    order.checkout();
+
+    order.setStrategy(std::make_unique&lt;PercentageDiscount&gt;(0.8));
+    order.checkout();
+
+    order.setStrategy(std::make_unique&lt;ThresholdDiscount&gt;(100.0, 20.0));
+    order.checkout();
+
+    order.setStrategy(std::make_unique&lt;FixedDiscount&gt;(30.0));
+    order.checkout();
+
+    return 0;
+}
+</code></pre>
+<p>运行输出：</p>
+<pre><code>--- 同一笔订单(原价 200)，切换不同促销策略 ---
+  [无折扣] 原价 200 -&gt; 实付 200
+  [打折(80%)] 原价 200 -&gt; 实付 160
+  [满减] 原价 200 -&gt; 实付 180
+  [直减] 原价 200 -&gt; 实付 170
+</code></pre>
+<p>看，同一笔订单、同一个 <code>checkout()</code>，只是背后策略不同，算出的实付价就跟着变。新增一个"拼团价"策略，只需加一个 <code>ConcreteStrategy</code>，<code>Order</code> 一行不用改——这就是开闭原则的具体样子。</p>
+<hr />
+<h2>🚀 进阶：现代 C++ 的改进方向</h2>
+<p>上面的实现是经典写法（继承 + 虚函数），已经覆盖绝大多数场景。但策略在 C++ 里还有几条更现代、更轻量的路。</p>
+<h3>函数指针 / lambda 替代虚函数（C++11 起）</h3>
+<p>当策略只是一段"输入→输出"的逻辑、不需要携带复杂状态时，<code>Strategy</code> 接口可以退化成一个 <code>std::function</code>，具体策略退化成可调用对象——零继承、零虚函数：</p>
+<pre><code class="language-cpp">using DiscountFn = std::function&lt;double(double)&gt;;
+
+double checkoutWith(double amount, DiscountFn fn) {
+    return fn(amount);   // 策略就是个函数，直接调
+}
+
+// 调用方随手给一个 lambda 当策略
+checkoutWith(200.0, [](double p){ return p * 0.8; });   // 8 折
+checkoutWith(200.0, [](double p){ return p &gt;= 100 ? p - 20 : p; }); // 满减
+</code></pre>
+<p>好处：写法极轻、无类型膨胀、lambda 捕获还能顺带带点局部状态。代价：失去了"统一基类"带来的内省（如 <code>name()</code>）、且每个 <code>std::function</code> 有轻微间接开销。</p>
+<h3>用 std::variant 替代虚函数（C++17）</h3>
+<p>把所有具体策略塞进一个 <code>std::variant</code>，用 <code>std::visit</code> 做编译期分派——值语义、无堆分配、无虚函数：</p>
+<pre><code class="language-cpp">struct NoDisc    { double operator()(double p) const { return p; } };
+struct Percent   { double rate; double operator()(double p) const { return p * rate; } };
+using Strategy = std::variant&lt;NoDisc, Percent&gt;;
+
+double apply(Strategy s, double p) {
+    return std::visit([p](auto&amp;&amp; st){ return st(p); }, s);
+}
+</code></pre>
+<p>好处：策略是值、能放进数组/栈、拷贝便宜、编译器还能内联。代价：策略集合在编译期固定（加一个新策略要改 <code>using Strategy = ...</code> 那一行），适合"算法族有限且稳定"的场景。</p>
+<h3>策略与"模板方法""状态"的边界</h3>
+<p>容易和策略混淆的两个模式，记住区别：</p>
+<ul>
+<li><strong>模板方法（Template Method）</strong>：算法<strong>骨架</strong>固定写死在父类，只把几个"步骤"留給子类重写，步骤在<strong>编译期</strong>就定死。策略是整个算法<strong>整体可替换</strong>、<strong>运行时</strong>切换。</li>
+<li><strong>状态（State）</strong>：状态对象<strong>知道下一个状态是谁</strong>，会主动触发状态转换；策略之间<strong>互不相识</strong>，由 Context / 客户端选择，策略自己不切彼此。</li>
+</ul>
+<p>心法口诀：策略是<strong>选算法</strong>，状态是<strong>走流程</strong>，模板方法是<strong>填步骤</strong>。</p>
+<h3>策略工厂 + 配置驱动</h3>
+<p>当策略很多、且由外部（配置文件 / 数据库 / UI 下拉框）决定用哪个时，别让客户端直接 <code>new</code> 具体类——用工厂 + 注册表映射：</p>
+<pre><code class="language-cpp">// 按名字造策略，调用方只认字符串
+std::unique_ptr&lt;DiscountStrategy&gt; makeDiscount(const std::string&amp; name) {
+    if (name == &quot;none&quot;)      return std::make_unique&lt;NoDiscount&gt;();
+    if (name == &quot;percent80&quot;) return std::make_unique&lt;PercentageDiscount&gt;(0.8);
+    if (name == &quot;threshold&quot;) return std::make_unique&lt;ThresholdDiscount&gt;(100.0, 20.0);
+    return std::make_unique&lt;NoDiscount&gt;();   // 默认兜底
+}
+</code></pre>
+<p>好处：新增算法只需在工厂里加一行映射，调用方完全解耦于具体类；配合上面的 <code>std::variant</code> 还能把"按名选"和"值语义"合起来用。</p>
+<hr />
+<h2>📌 小结</h2>
+<ul>
+<li><strong>是什么</strong>：定义一族算法，各自封装成可互换的策略对象，让算法的变化独立于使用它的客户端。<strong>"把选算法，从 if-else 变成一个可替换的对象。"</strong></li>
+<li><strong>解决什么</strong>：消除巨型条件分支（开闭原则）、算法独立测试与复用、运行时自由切换、避免 Context 变胖。</li>
+<li><strong>什么时候用</strong>：手上有一族<strong>可互换</strong>的算法、且需要在<strong>运行时切换/选择</strong>、想让加算法不动老代码。三问"一族可互换 + 运行时切换 + 想开闭"都满足才上。</li>
+<li><strong>怎么实现</strong>：Strategy 抽象接口 + 多个 ConcreteStrategy 各自实现 + Context 持有策略并把请求委派过去。C++ 里<strong>持有用智能指针</strong>最稳，策略写成<strong>无状态、互不相识</strong>的纯算法最香。</li>
+<li><strong>进阶</strong>：轻量场景可用 <code>std::function</code> / lambda 替代虚函数；算法族稳定时用 <code>std::variant</code> + <code>std::visit</code> 值语义分派；分清它与模板方法（填步骤）/ 状态（走流程）的边界；策略多时上工厂 + 注册表做配置驱动。</li>
+</ul>
+<p>如果你正盯着一段"根据 type 选算法"的 <code>if-else</code> 发愁，先想清楚这族算法会不会变、要不要换——会，就抽成策略；抽完你会发现，那个大函数瘦了，测试也好写了。</p>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库 <a href="https://github.com/os-artificer/ebooks">os-artificer/ebooks</a>，位于 <code>src/cpp/design-mode/</code> 目录。
+进入 <code>src/cpp/</code> 目录执行 <code>make bin/strategy_demo</code> 即可编译本示例（或执行 <code>make</code> 编译全部示例）。
+文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/design-mode/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>

@@ -68,7 +68,7 @@ A user interacts with an AI assistant, giving it a complex prompt like "Plan an 
 
 🌐 中文：用户与一个 AI 助手交互，给出一个像"规划一次国际旅行"这样的复杂指令。
 
-![User's complex request flow: User → Prompt → AI Assistant](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/drafts/images/domain-papers/mermaid-user-complex-request.png)
+![User's complex request flow: User → Prompt → AI Assistant](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/notes/images/domain-papers/mermaid-user-complex-request.png)
 
 🌐 图示：用户发起复杂请求，AI Assistant 接收处理。
 
@@ -78,7 +78,7 @@ The AI assistant receives the prompt and realizes it needs to call upon multiple
 
 🌐 中文：AI 助手收到指令后意识到，它需要调用多个专精型智能体才能完成请求，包括：机票预订智能体、酒店预订智能体、货币兑换智能体和本地游玩智能体。
 
-![The AI Assistant orchestrates four specialised agents: Flight Booking, Hotel Reservation, Currency Conversion, Local Tours](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/drafts/images/domain-papers/mermaid-need-for-collaboration.png)
+![The AI Assistant orchestrates four specialised agents: Flight Booking, Hotel Reservation, Currency Conversion, Local Tours](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/notes/images/domain-papers/mermaid-need-for-collaboration.png)
 
 🌐 图示：AI Assistant 作为编排者，调用四个专精智能体（机票预订 / 酒店预订 / 货币兑换 / 本地游玩）。
 
@@ -102,7 +102,7 @@ The AI assistant, now acting as an orchestrator, receives the cohesive informati
 
 此时作为"编排者"的 AI 助手，接收了所有支持 A2A 的智能体给出的整合信息，再向用户最初的那条指令返回一个完整、统一的旅行计划。
 
-![A2A 角色关系：User、A2A Client（客户端智能体）、A2A Server（远程智能体）](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/drafts/images/domain-papers/a2a-actors.png)
+![A2A 角色关系：User、A2A Client（客户端智能体）、A2A Server（远程智能体）](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/notes/images/domain-papers/a2a-actors.png)
 
 ### 🌟 Core Benefits of A2A ／ A2A 的核心优势
 
@@ -153,7 +153,7 @@ A2A is situated within a broader agent stack, which includes:
 - **Models**: Fundamental to an agent's reasoning, these can be any Large Language Model (LLM).  
   🌐 中文：智能体推理的基础，可以是任何大语言模型（LLM）。
 
-![A2A 与 MCP 在技术栈中的位置](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/drafts/images/domain-papers/agentic-stack.png)
+![A2A 与 MCP 在技术栈中的位置](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/notes/images/domain-papers/agentic-stack.png)
 
 #### 🔗 A2A and MCP ／ A2A 与 MCP
 
@@ -170,7 +170,7 @@ The Agent2Agent (A2A) protocol is designed to standardize communication between 
 - **A2A's Focus:** Enabling agents to collaborate within their native modalities, allowing them to communicate as agents (or as users) rather than being constrained to tool-like interactions. This enables complex, multi-turn interactions where agents reason, plan, and delegate tasks to other agents. For example, this facilitates multi-turn interactions, such as those involving negotiation or clarification when placing an order.  
   🌐 中文：让智能体以其原生模态协作，以"智能体（或用户）"的身份通信，而不是被限制在"类工具"的交互里。这支持复杂的多轮交互，让智能体能推理、规划并把任务委托给其他智能体。例如，它促成了多轮交互，比如下单时的协商或澄清。
 
-![A2A + MCP 协同示意](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/drafts/images/domain-papers/a2a-mcp-readme.png)
+![A2A + MCP 协同示意](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/notes/images/domain-papers/a2a-mcp-readme.png)
 
 The practice of encapsulating an agent as a simple tool is fundamentally limiting, as it fails to capture the agent's full capabilities. This critical distinction is explored in the post, [Why Agents Are Not Tools](https://discuss.google.dev/t/agents-are-not-tools/192812). For a more in-depth comparison, refer to the [A2A and MCP Comparison](https://a2a-protocol.org/latest/topics/a2a-and-mcp/) document.
 
@@ -190,7 +190,7 @@ The A2A request lifecycle is a sequence that details the four main steps a reque
 
 🌐 中文：A2A 请求生命周期描述了一个请求所经历的四个主要步骤：智能体发现（agent discovery）、认证（authentication）、`sendMessage` API 和 `sendMessageStream` API。下面这张图深入展示了运行流程，呈现了客户端、A2A 服务器与认证服务器之间的交互。
 
-![A2A request lifecycle sequence: 1. Agent Discovery  →  2. Authentication (with optional openIdConnect alt)  →  3. sendMessage API  →  4. sendMessageStream API](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/drafts/images/domain-papers/mermaid-request-lifecycle.png)
+![A2A request lifecycle sequence: 1. Agent Discovery  →  2. Authentication (with optional openIdConnect alt)  →  3. sendMessage API  →  4. sendMessageStream API](local-file:///Users/ylgeeker/workspace/os-artificer/ebooks/notes/images/domain-papers/mermaid-request-lifecycle.png)
 
 🌐 图示：A2A 请求生命周期完整时序——智能体发现 → 认证（支持 openIdConnect 单点登录分支）→ 同步 sendMessage → 流式 sendMessageStream。
 

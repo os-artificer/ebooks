@@ -2,7 +2,7 @@
 """
 Render markdown slices to PNG images for 小红书-style vertical notes.
 Content is preserved verbatim per slice (line ranges from source file).
-Batch mode: drafts under cpp, golang, stl, linux, libc-gcc → repo/xhs/<分类>/<article>/.
+Batch mode: notes under cpp, golang, stl, linux, libc-gcc → repo/xhs/<分类>/<article>/.
 Also writes 00-cover.png (graphic poster: title, heading-derived keywords, optional one-line hook).
 """
 from __future__ import annotations
@@ -40,13 +40,13 @@ DEFAULT_XHS_ROOT = REPO_ROOT / "xhs"
 # Max content-image height: 1080×1920 (9:16) — native for 抖音/视频号, works for 小红书.
 # Slices exceeding this are auto-paginated into multiple images for mobile readability.
 MAX_IMAGE_HEIGHT_DEFAULT = 1920
-DRAFT_CPP = REPO_ROOT / "drafts" / "cpp"
-DRAFT_GOLANG = REPO_ROOT / "drafts" / "golang"
-DRAFT_STL = REPO_ROOT / "drafts" / "stl"
-DRAFT_LINUX = REPO_ROOT / "drafts" / "linux"
-DRAFT_LIBC_GCC = REPO_ROOT / "drafts" / "libc-gcc"
+DRAFT_CPP = REPO_ROOT / "notes" / "cpp"
+DRAFT_GOLANG = REPO_ROOT / "notes" / "golang"
+DRAFT_STL = REPO_ROOT / "notes" / "stl"
+DRAFT_LINUX = REPO_ROOT / "notes" / "linux"
+DRAFT_LIBC_GCC = REPO_ROOT / "notes" / "libc-gcc"
 
-# (drafts 子目录, xhs 输出子目录名)
+# (notes 子目录, xhs 输出子目录名)
 XHS_BATCH_CATEGORY_FOLDERS: tuple[tuple[Path, str], ...] = (
     (DRAFT_CPP, "cpp"),
     (DRAFT_GOLANG, "golang"),
@@ -812,7 +812,7 @@ def lang_label_for_path(md_path: Path) -> str:
     try:
         rel = md_path.resolve().relative_to(REPO_ROOT)
         parts = rel.parts
-        if len(parts) >= 2 and parts[0] == "drafts":
+        if len(parts) >= 2 and parts[0] == "notes":
             if parts[1] == "cpp":
                 return "C++"
             if parts[1] == "golang":
@@ -889,7 +889,7 @@ def main() -> None:
     parser.add_argument(
         "--batch",
         action="store_true",
-        help="Process drafts/cpp|golang|stl|linux|libc-gcc *.md into <out-root>/<分类>/<stem>/",
+        help="Process notes/cpp|golang|stl|linux|libc-gcc *.md into <out-root>/<分类>/<stem>/",
     )
     parser.add_argument(
         "--no-cover",
@@ -933,7 +933,7 @@ def main() -> None:
         sources = collect_batch_sources()
         if not sources:
             print(
-                "No .md files under drafts/cpp, golang, stl, linux, or libc-gcc.",
+                "No .md files under notes/cpp, golang, stl, linux, or libc-gcc.",
                 file=sys.stderr,
             )
             sys.exit(1)

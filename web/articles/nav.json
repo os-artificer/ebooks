@@ -7,10 +7,6 @@
       "summaryClass": "nav-category--cpp",
       "items": [
         {
-          "href": "./page/cpp/adapter-pattern.html",
-          "text": "C++ 设计模式实践：适配器模式——让不兼容的接口握手言和"
-        },
-        {
           "href": "./page/cpp/bad-case.html",
           "text": "#1：使用未初始化变量（读取垃圾值 / UB）"
         },
@@ -21,10 +17,6 @@
         {
           "href": "./page/cpp/hot-updated.html",
           "text": "一、什么是热更新？"
-        },
-        {
-          "href": "./page/cpp/state-pattern.html",
-          "text": "C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装"
         },
         {
           "href": "./page/cpp/type_erasure.html",
@@ -65,6 +57,26 @@
         {
           "href": "./page/cpp/限制继承的方法有哪些.html",
           "text": "一、不让类再被继承（终结类）"
+        }
+      ]
+    },
+    {
+      "key": "design-mode",
+      "title": "设计模式",
+      "open": true,
+      "summaryClass": "nav-category--design-mode",
+      "items": [
+        {
+          "href": "./page/design-mode/adapter-pattern.html",
+          "text": "C++ 设计模式实践：适配器模式——让不兼容的接口握手言和"
+        },
+        {
+          "href": "./page/design-mode/state-pattern.html",
+          "text": "C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装"
+        },
+        {
+          "href": "./page/design-mode/strategy-pattern.html",
+          "text": "C++ 设计模式实践：策略模式——把\"选算法\"交给运行时"
         }
       ]
     },

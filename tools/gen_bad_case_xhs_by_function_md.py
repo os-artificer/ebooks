@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Emit drafts/cpp/bad-case-按函数切片.md from src/cpp/bad_case.cpp.
+Emit notes/cpp/bad-case-按函数切片.md from src/cpp/bad_case.cpp.
 
 Each ## section is one catalog block: from the line `/* ---------- N. …`
 through the line before the next such header (full verbatim excerpt within
@@ -15,7 +15,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC = REPO_ROOT / "src" / "cpp" / "bad-case" / "bad_case.cpp"
-OUT = REPO_ROOT / "drafts" / "cpp" / "bad-case-按函数切片.md"
+OUT = REPO_ROOT / "notes" / "cpp" / "bad-case-按函数切片.md"
 
 CATALOG_HDR = re.compile(r"^/\* ---------- (\d+)\.\s*(.+?)\s*-+\s*$")
 

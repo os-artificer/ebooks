@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 设计模式实践：适配器模式——让不兼容的接口握手言和</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 设计模式实践：适配器模式——让不兼容的接口握手言和</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-07-26  |  阅读时长：约 13 分钟</p>
+<p>你有没有接过这种活：Leader 说"把那个开源库接进来"，你一看它的 API——方法名不一样、参数顺序反了、单位还对不上（华氏度 vs 摄氏度），跟项目里现有的接口八竿子打不着。</p>
+<p>你有没有写过这样的代码：为了用上这个库，在十几个调用点各包一层转换——传参前先 <code>toFahrenheit()</code>，拿到结果再 <code>toCelsius()</code>，方法名不对就写个 inline lambda 兜底……改一处接口，全项目跟着抖。</p>
+<p><strong>适配器模式（Adapter Pattern）</strong> 就是专门收拾这种"接口不对付"场面的——它在不修改双方代码的前提下，把一个类的接口转换成客户端期望的另一个接口，让原本因为接口不兼容而没法一起工作的类，能愉快协作。</p>
+<hr />
+<h2>🕳️ 先看问题：接口不兼容的尴尬</h2>
+<p>假设你项目里统一用 <code>ITemperatureSensor</code>（返回摄氏度），现在要接一个遗留的老传感器 <code>LegacySensor</code>，它只提供 <code>getFahrenheit()</code>（华氏度），方法名、单位都不对。</p>
+<pre><code class="language-cpp">// 反面教材：在调用方硬塞转换逻辑
+class LegacySensor {
+public:
+    double getFahrenheit() const { return _f; }  // 只懂华氏度
+};
+
+void clientCode(LegacySensor&amp; legacy) {
+    // 每处调用都要手写单位换算，还得记住它叫 getFahrenheit（而不是项目里的 readCelsius）
+    double c = (legacy.getFahrenheit() - 32.0) * 5.0 / 9.0;
+    std::cout &lt;&lt; &quot;温度: &quot; &lt;&lt; c &lt;&lt; &quot; °C\n&quot;;
+}
+</code></pre>
+<p>问题在哪儿？</p>
+<ul>
+<li><strong>转换逻辑散落调用方</strong>：换算、改名散在十几个地方，重复且易错。</li>
+<li><strong>客户端被迫知道 Adaptee 细节</strong>：本该面向统一接口，现在却耦合了老传感器的华氏度 API。</li>
+<li><strong>换实现要改客户端</strong>：哪天换成另一个老库（返回开尔文），所有调用点重写。</li>
+<li><strong>无法面向抽象编程</strong>：<code>clientCode</code> 直接依赖具体类，没法和多态、依赖注入搭配。</li>
+</ul>
+<p>问题的本质：<strong>客户端</strong>和一个<strong>接口不匹配的具体实现</strong>耦合在了一起。适配器模式要做的，就是加一层"翻译"，把它们隔开。</p>
+<hr />
+<h2>🧩 适配器模式是什么</h2>
+<h3>核心思想</h3>
+<p><strong>把一个类的接口，转换成客户端期望的另一种接口。适配器让原本因接口不兼容而无法协作的类，能一起工作。</strong></p>
+<p><strong>"不改双方，加一层翻译"——客户端面向 Target，适配器在中间做桥。</strong></p>
+<p>对比一下：</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>本质</th>
+<th>加新实现的代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>调用方硬转换</td>
+<td>改客户端代码去迎合 Adaptee</td>
+<td>每处调用都要改（N 处）</td>
+</tr>
+<tr>
+<td>适配器模式</td>
+<td>加一个 Adapter 做翻译</td>
+<td>只加一个适配器类（1 处）</td>
+</tr>
+</tbody>
+</table>
+<h3>适配器的三个核心角色</h3>
+<p>适配器模式只有三个角色，关系非常清晰：</p>
+<ul>
+<li><strong>Target（目标接口）</strong>：客户端期望的接口。客户端只认它，不认 Adaptee。</li>
+<li><strong>Adapter（适配器）</strong>：实现 Target 接口，内部持有/继承 Adaptee，把 Target 的调用"翻译"成对 Adaptee 的调用。</li>
+<li><strong>Adaptee（被适配者）</strong>：已经存在、能干活、但接口不对的那个类。通常不能或不应修改（第三方库、遗留代码）。</li>
+</ul>
+<p>关键点：<strong>客户端完全不知道 Adaptee 的存在</strong>——它以为自己在跟 Target 打交道，实际干活的是被 Adapter 包起来的 Adaptee。</p>
+<hr />
+<h2>🗺️ UML 类关系图</h2>
+<p>下面是对象适配器（组合方式）的类关系图。</p>
+<p><code>Adapter</code> 实现 <code>Target</code>，并持有 <code>Adaptee</code> 的引用；客户端面向 <code>Target</code> 调用，Adapter 在内部转发给 <code>Adaptee</code>。</p>
+<div class="mermaid">
+classDiagram
+    class ITemperatureSensor {
+        &lt;&lt;Interface&gt;&gt;
+        +readCelsius() double
+        +name() string
+    }
+    class FahrenheitAdapter {
+        -LegacySensor adaptee
+        +FahrenheitAdapter(LegacySensor) void
+        +readCelsius() double
+        +name() string
+    }
+    class LegacySensor {
+        +getFahrenheit() double
+    }
+    ITemperatureSensor &lt;|.. FahrenheitAdapter
+    FahrenheitAdapter --&gt; LegacySensor
+</div>
+<p>再看类适配器（多继承方式）——Adapter 同时继承 Target 和 Adaptee，无需持有引用：</p>
+<div class="mermaid">
+classDiagram
+    class ITemperatureSensor {
+        &lt;&lt;Interface&gt;&gt;
+        +readCelsius() double
+        +name() string
+    }
+    class LegacySensor {
+        +getFahrenheit() double
+    }
+    class FahrenheitClassAdapter {
+        +readCelsius() double
+        +name() string
+    }
+    ITemperatureSensor &lt;|.. FahrenheitClassAdapter
+    LegacySensor &lt;|-- FahrenheitClassAdapter
+</div>
+<p>两张图配合看：对象适配器靠"组合 + 转发"，类适配器靠"多继承 + 直接调用"。</p>
+<p>后者更紧凑，但侵入性更强。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>复用现成实现，不改动双方</h3>
+<p>这是适配器的核心价值。</p>
+<p>你有一个能干活但接口不对的类（第三方 SDK、遗留模块），<strong>既不改它的代码（可能改不了），也不改客户端代码</strong>，加一层 Adapter 就把它接进来了。</p>
+<h3>隔离变化，抵御接口漂移</h3>
+<p>Adaptee 升级、换供应商、方法改名？只要适配器这层翻译跟着改，客户端一行不动。</p>
+<p>适配器是客户端与不稳定实现之间的"缓冲垫"。</p>
+<h3>统一接口，面向抽象编程</h3>
+<p>所有适配后的实现都露出同一个 Target 接口，客户端可以放心用多态、依赖注入、工厂模式。</p>
+<p>想换实现？换一个 Adapter 实例即可。</p>
+<h3>单一职责，关注点分离</h3>
+<p>翻译逻辑（单位换算、参数重排、方法名映射）集中在一个 Adapter 类里，而不是散在调用方。</p>
+<p>客户端只管业务，Adapter 只管翻译，各司其职。</p>
+<hr />
+<h2>🌐 典型应用场景</h2>
+<p>适配器模式适用于"手上已有能干活的类，但它的接口和你需要的不一致，且你不想/不能改它"的场景。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>典型 Target（你要的）</th>
+<th>典型 Adaptee（现有的）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>第三方库接入</strong></td>
+<td>项目统一日志接口 <code>ILogger</code></td>
+<td>某开源库只有 <code>logToFile(msg)</code></td>
+</tr>
+<tr>
+<td><strong>遗留系统对接</strong></td>
+<td>现代仓储接口 <code>IRepository</code></td>
+<td>老系统 <code>LegacyDb.query(sql)</code></td>
+</tr>
+<tr>
+<td><strong>单位/格式互转</strong></td>
+<td>统一摄氏度接口</td>
+<td>只给华氏度的老传感器</td>
+</tr>
+<tr>
+<td><strong>设备/驱动抽象</strong></td>
+<td>统一 <code>IDevice</code> 控制接口</td>
+<td>厂商私有 SDK 的奇怪 API</td>
+</tr>
+<tr>
+<td><strong>统一支付/短信网关</strong></td>
+<td>内部 <code>IPayment</code></td>
+<td>微信/支付宝各自不同的 API</td>
+</tr>
+<tr>
+<td><strong>测试替身</strong></td>
+<td>业务依赖的 <code>IExternalService</code></td>
+<td>测试用的 Mock/Fake 实现</td>
+</tr>
+</tbody>
+</table>
+<p>📌 <strong>判断要不要用适配器模式，可以试着问自己三个问题</strong>：</p>
+<ol>
+<li>是否已有一个能干活、但接口不对的现成类？—— 没有就直接写新类，别硬套适配器。</li>
+<li>能否改被适配方或客户端的接口？—— 能直接改就改，适配器是"改不了时的桥"。改一方往往比加一层更省事。</li>
+<li>是否需要多套适配（一对多 / 多对一）？—— 一个 Adaptee 适配给多个 Target、或多个 Adaptee 适配给一个 Target 时，适配器的复用价值才真正凸显；只接一次的话，inline 转换通常更轻。</li>
+</ol>
+<p>三问里"接口不对 + 改不了 + 值得复用"，才上适配器。</p>
+<hr />
+<h2>💻 C++ 实现实践</h2>
+<h3>场景设定：老式温度传感器接入统一摄氏度接口</h3>
+<p>我们用温度传感器做演示——项目统一接口 <code>ITemperatureSensor</code> 返回<strong>摄氏度</strong>，但手上有个遗留 <code>LegacySensor</code> 只给<strong>华氏度</strong>。</p>
+<p>我们加一个适配器，让老传感器"假装"是个现代传感器。</p>
+<p>接口与角色：</p>
+<table>
+<thead>
+<tr>
+<th>角色</th>
+<th>类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>ITemperatureSensor</strong>（Target）</td>
+<td>接口</td>
+<td>客户端期望：<code>readCelsius()</code> 返回摄氏度</td>
+</tr>
+<tr>
+<td><strong>LegacySensor</strong>（Adaptee）</td>
+<td>遗留类</td>
+<td>只有 <code>getFahrenheit()</code>，返回华氏度，不可修改</td>
+</tr>
+<tr>
+<td><strong>FahrenheitAdapter</strong>（Adapter）</td>
+<td>适配器</td>
+<td>实现 Target，内部持有 LegacySensor，做 F→C 换算</td>
+</tr>
+<tr>
+<td><strong>ModernSensor</strong></td>
+<td>原生实现</td>
+<td>直接实现 Target，用于对比"原生 vs 适配"</td>
+</tr>
+</tbody>
+</table>
+<h3>伪代码骨架</h3>
+<p>先看骨架，理解结构：</p>
+<pre><code class="language-cpp">// ---- 目标接口 ----
+class ITemperatureSensor {
+public:
+    virtual double readCelsius() const = 0;
+};
+
+// ---- 被适配者（已存在，不可改）----
+class LegacySensor {
+public:
+    double getFahrenheit() const;   // 只懂华氏度
+};
+
+// ---- 适配器（对象适配器：组合持有 Adaptee）----
+class FahrenheitAdapter : public ITemperatureSensor {
+    const LegacySensor* _legacy;
+public:
+    FahrenheitAdapter(const LegacySensor* l) : _legacy(l) {}
+    double readCelsius() const override {
+        return (_legacy-&gt;getFahrenheit() - 32.0) * 5.0 / 9.0;  // 翻译
+    }
+};
+
+// ---- 客户端：只面向 Target ----
+void report(ITemperatureSensor&amp; s) {
+    std::cout &lt;&lt; s.readCelsius() &lt;&lt; &quot; °C\n&quot;;  // 根本不知道背后是 LegacySensor
+}
+</code></pre>
+<p>核心模式就这几行：<strong>Target 定义契约、Adapter 实现契约、Adapter 持有 Adaptee 并把调用翻译过去</strong>。</p>
+<h3>关键实现决策</h3>
+<p>在写完整代码之前，有几个工程决策值得展开讲。</p>
+<p><strong>🔧 决策：对象适配器还是类适配器？</strong></p>
+<ul>
+<li><strong>对象适配器（组合）</strong>：<code>Adapter</code> 持有 <code>Adaptee*</code>/引用，转发调用。灵活——运行时可换 Adaptee、可适配 Adaptee 的子类。C++ 里首选。</li>
+<li><strong>类适配器（多继承）</strong>：<code>Adapter</code> 同时继承 <code>Target</code> 和 <code>Adaptee</code>，直接调继承来的方法。省一次间接、无需持有引用，但侵入性强：<code>Adaptee</code> 必须可继承（非 <code>final</code>）、且把 Adaptee 的接口"暴露"进了 Adapter（私有继承可缓解），还不支持适配 Adaptee 的子类。</li>
+</ul>
+<p><strong>🔧 决策：适配器怎么持有 Adaptee？</strong></p>
+<ul>
+<li><strong>裸指针/引用</strong>：最轻，但生命周期由外部保证（Adaptee 必须比 Adapter 活得久）。上面 demo 用 <code>const LegacySensor*</code>。</li>
+<li><strong>智能指针 / 值成员</strong>：Adapter 自己管理 Adaptee 生命周期，更独立、更安全，适合 Adaptee 是 Adapter 私有、随 Adapter 一起生死的场景。</li>
+</ul>
+<p><strong>🔧 决策：单向适配还是双向适配？</strong></p>
+<p>绝大多数是<strong>单向</strong>：Target 调用 → 翻译成 Adaptee 调用。少数场景（两个遗留系统要互操作）需要<strong>双向适配器</strong>——同时实现两套接口、互相翻译。双向适配器本质是两个单向适配器的叠加，注意别让两套语义在翻译中"串味"。</p>
+<p><strong>🔧 决策：适配器只转发，还是要做数据转换？</strong></p>
+<ul>
+<li><strong>纯转发</strong>：双方语义一致、只是方法名/参数顺序不同（如 <code>close()</code> ↔ <code>shutdown()</code>）。适配器只做"改名/重排"，无数据加工。</li>
+<li><strong>带转换</strong>：双方语义或单位不同（华氏度↔摄氏度、XML↔JSON、坐标系统不同）。适配器在这里承担真正的"翻译"职责——也是它最有价值的地方。转换逻辑要集中、可单测，别在翻译里夹带业务判断。</li>
+</ul>
+<h3>完整代码</h3>
+<p>完整可编译代码在 <code>src/cpp/design-mode/adapter_demo.cpp</code>，核心结构如下：</p>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+#include &lt;string&gt;
+
+// ---- Target：客户端期望的统一接口 ----
+class ITemperatureSensor {
+public:
+    virtual ~ITemperatureSensor() = default;
+    virtual double readCelsius() const = 0;
+    virtual std::string name() const = 0;
+};
+
+// ---- 原生实现：现代传感器，直接输出摄氏度 ----
+class ModernSensor : public ITemperatureSensor {
+    double _c = 0;
+public:
+    explicit ModernSensor(double c) : _c(c) {}
+    double readCelsius() const override { return _c; }
+    std::string name() const override { return &quot;ModernSensor&quot;; }
+};
+
+// ---- Adaptee：被适配者（遗留传感器，只给华氏度，不可修改）----
+class LegacySensor {
+    double _f = 0;
+public:
+    explicit LegacySensor(double f) : _f(f) {}
+    double getFahrenheit() const { return _f; }
+};
+
+// ---- Adapter（对象适配器）：组合持有 Adaptee，做 F-&gt;C 换算 ----
+class FahrenheitAdapter : public ITemperatureSensor {
+    const LegacySensor* _legacy;
+public:
+    explicit FahrenheitAdapter(const LegacySensor* l) : _legacy(l) {}
+    double readCelsius() const override {
+        return (_legacy-&gt;getFahrenheit() - 32.0) * 5.0 / 9.0;
+    }
+    std::string name() const override { return &quot;FahrenheitAdapter(Legacy)&quot;; }
+};
+
+// ---- Adapter（类适配器）：多继承方式（进阶演示）----
+class FahrenheitClassAdapter
+    : public ITemperatureSensor
+    , private LegacySensor {
+public:
+    explicit FahrenheitClassAdapter(double f) : LegacySensor(f) {}
+    double readCelsius() const override {
+        return (getFahrenheit() - 32.0) * 5.0 / 9.0;  // 直接调继承来的方法
+    }
+    std::string name() const override { return &quot;FahrenheitClassAdapter(Legacy)&quot;; }
+};
+
+// ---- 客户端：只面向 Target，不关心背后是原生/对象适配/类适配 ----
+void report(ITemperatureSensor&amp; s) {
+    std::cout &lt;&lt; &quot;  &quot; &lt;&lt; s.name() &lt;&lt; &quot; 读数: &quot;
+              &lt;&lt; s.readCelsius() &lt;&lt; &quot; °C\n&quot;;
+}
+
+int main() {
+    ModernSensor modern(37.0);
+    LegacySensor legacy(98.6);          // 华氏 98.6 ≈ 摄氏 37.0
+    FahrenheitAdapter adapter(&amp;legacy);
+    FahrenheitClassAdapter classAdapter(98.6);
+
+    std::cout &lt;&lt; &quot;--- 客户端统一用 readCelsius()，三种实现无感知切换 ---\n&quot;;
+    report(modern);
+    report(adapter);
+    report(classAdapter);
+    return 0;
+}
+</code></pre>
+<p>运行输出：</p>
+<pre><code>--- 客户端统一用 readCelsius()，三种实现无感知切换 ---
+  ModernSensor 读数: 37 °C
+  FahrenheitAdapter(Legacy) 读数: 37 °C
+  FahrenheitClassAdapter(Legacy) 读数: 37 °C
+</code></pre>
+<p>看，客户端拿到的已经是摄氏度了，完全不知道背后是个只懂华氏度的老传感器。这正是适配器的意义：<strong>对客户端透明</strong>。</p>
+<hr />
+<h2>🚀 进阶：现代 C++ 的改进方向</h2>
+<p>上面的实现是经典写法（继承 + 虚函数），已经覆盖绝大多数场景。但适配器在 C++ 里还有几条更现代、更轻量的路。</p>
+<h3>类适配器：多继承的代价与取舍</h3>
+<p>前面提过——类适配器靠 <code>Adapter : public Target, private Adaptee</code> 直接继承：</p>
+<pre><code class="language-cpp">class FahrenheitClassAdapter
+    : public ITemperatureSensor
+    , private LegacySensor {
+public:
+    double readCelsius() const override {
+        return (getFahrenheit() - 32.0) * 5.0 / 9.0;  // 直接调继承来的方法
+    }
+    std::string name() const override { return &quot;FahrenheitClassAdapter(Legacy)&quot;; }
+};
+</code></pre>
+<p>好处：无间接、不持有引用、代码更短。</p>
+<p>代价：侵入性强——<code>LegacySensor</code> 必须可继承（非 <code>final</code>）、其公有接口被"吸"进 Adapter（私有继承能挡掉一部分）、且<strong>无法适配 <code>LegacySensor</code> 的子类</strong>（继承在编译期钉死类型）。大多数 C++ 项目里，对象适配器（组合）更受青睐。</p>
+<h3>用模板 + 概念做"无继承适配"（C++20）</h3>
+<p>如果 Target 只是一组函数签名（不是必须是个基类），可以用模板让任何"长得像"的类直接当 Target 用，连 Adapter 类都不用写：</p>
+<pre><code class="language-cpp">template &lt;typename Sensor&gt;
+requires requires(Sensor s) { s.getFahrenheit(); }   // 只要有 getFahrenheit() 即可
+double toCelsius(const Sensor&amp; s) {
+    return (s.getFahrenheit() - 32.0) * 5.0 / 9.0;
+}
+</code></pre>
+<p>好处：零虚函数、零继承、编译期多态、无任何运行时开销。
+代价：失去了"统一基类接口"（不能把不同传感器塞进同一个 <code>vector&lt;ITemperatureSensor*&gt;</code>），适合不需要运行时多态的轻量场景。</p>
+<h3>适配器与"外观""桥接"的边界</h3>
+<p>容易和适配器混淆的两个模式，记住区别：</p>
+<ul>
+<li><strong>外观（Facade）</strong>：给<strong>一群</strong>子系统提供一个简化接口，目的是"简化"；适配器是给<strong>一个</strong>类换接口，目的是"兼容"。</li>
+<li><strong>桥接（Bridge）</strong>：把"抽象"和"实现"在两头都设成可扩展，目的是"运行时可换实现"；适配器是事后补救"已有接口不兼容"，桥接是事先就设计成可插拔。</li>
+</ul>
+<p>心法口诀：适配器是<strong>接旧账</strong>，桥接是<strong>铺新路</strong>，外观是<strong>包大块</strong>。</p>
+<h3>适配器链（Adapter Chain）</h3>
+<p>多个不兼容层叠在一起时，可以把适配器串成链：A 的 Target 接口由适配器 B 实现，B 内部又适配 C……每层只翻译自己那一段。</p>
+<p>注意链别太长（超过 3 层就该怀疑是不是设计错了），否则排查翻译错误会非常痛苦。</p>
+<hr />
+<h2>📌 小结</h2>
+<ul>
+<li><strong>是什么</strong>：把类的接口转换成客户端期望的另一种接口，让因接口不兼容而无法协作的类能一起工作。<strong>"不改双方，加一层翻译"。</strong></li>
+<li><strong>解决什么</strong>：复用现成实现（不改 Adaptee/客户端）、隔离接口变化、统一接口面向抽象编程、翻译逻辑集中单一职责。</li>
+<li><strong>什么时候用</strong>：手上有能干活但接口不对的现成类、且改不了它；需要一对多/多对一复用适配。三问"接口不对 + 改不了 + 值得复用"才上。</li>
+<li><strong>怎么实现</strong>：Target 抽象接口 + Adapter 实现 Target 并持有/继承 Adaptee + Adaptee 原有实现。C++ 里<strong>对象适配器（组合）</strong>最常用，类适配器（多继承）在紧凑场景可选。</li>
+<li><strong>进阶</strong>：类适配器省间接但侵入；模板+概念可做无继承的编译期适配；分清它与外观/桥接的边界；适配器链别超过三层。</li>
+</ul>
+<p>如果你正打算"为了接个库改一堆调用方"，先停一下——多半加一个 Adapter 类，就能让客户端继续面向统一接口、安稳睡觉。</p>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库 <a href="https://github.com/os-artificer/ebooks">os-artificer/ebooks</a>，位于 <code>src/cpp/design-mode/</code> 目录。
+进入 <code>src/cpp/</code> 目录执行 <code>make bin/adapter_demo</code> 即可编译本示例（或执行 <code>make</code> 编译全部示例）。
+文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/design-mode/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>

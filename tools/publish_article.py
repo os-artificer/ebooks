@@ -10,11 +10,11 @@ from markdown import markdown as md_to_html
 
 # 本脚本在 tools/ 下，仓库根为上一级目录
 ROOT = Path(__file__).resolve().parent.parent
-DRAFTS = ROOT / "drafts"
+DRAFTS = ROOT / "notes"
 NAV_PATH = ROOT / "web" / "articles" / "nav.json"
 # 与 publish_all 中一致：仅这些分类参与导航同步
 NAV_SYNC_KEYS = frozenset(
-    {"cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch"}
+    {"cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch", "design-mode"}
 )
 
 # 仅当文章含 ```mermaid 代码块时, 才在 HTML 中注入 Mermaid 运行时,
@@ -119,7 +119,7 @@ def convert_one(md_path: Path, out_html_path: Path) -> None:
         _mermaid_div,
         html_body,
     )
-    # 草稿在 drafts/<分类>/ 下用 ../images/...；发布到 web/page/<分类>/ 需多一层 ../
+    # 源文件在 notes/<分类>/ 下用 ../images/...；发布到 web/page/<分类>/ 需多一层 ../
     html_body = html_body.replace('src="../images/', 'src="../../images/')
     # 注意：上面已把 <pre><code class="language-mermaid"> 转换为 <div class="mermaid">，
     # 所以这里基于原始 Markdown 判断是否需要注入 Mermaid 运行时。
@@ -191,16 +191,16 @@ def _draft_category(md_path: Path) -> str:
         rel = md_path.resolve().relative_to(DRAFTS)
     except ValueError:
         raise SystemExit(
-            f"必须在 drafts 下: {md_path}\n"
+            f"必须在 notes 下: {md_path}\n"
             f"（期望前缀: {DRAFTS}/）"
         )
     if len(rel.parts) < 2:
-        raise SystemExit(f"路径无效（需要 drafts/<分类>/<文章>.md）: {md_path}")
+        raise SystemExit(f"路径无效（需要 notes/<分类>/<文章>.md）: {md_path}")
     return rel.parts[0]
 
 
 def sync_nav_full() -> None:
-    """根据 drafts/<分类>/*.md 重建 nav.json 中各分类的 items（顺序为文件名排序）。"""
+    """根据 notes/<分类>/*.md 重建 nav.json 中各分类的 items（顺序为文件名排序）。"""
     if not NAV_PATH.is_file():
         raise SystemExit(f"未找到导航文件: {NAV_PATH}")
     data = json.loads(NAV_PATH.read_text(encoding="utf-8"))
@@ -245,7 +245,7 @@ def copy_tech_arch_assets_if_needed(categories: set[str]) -> None:
 
 
 def publish_all() -> None:
-    categories = ["cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch"]
+    categories = ["cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch", "design-mode"]
     for cat in categories:
         in_dir = DRAFTS / cat
         out_dir = ROOT / "web" / "page" / cat
@@ -282,7 +282,7 @@ def publish_paths(md_paths: list[Path]) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="将 drafts 下的 Markdown 发布为 web/page 下的 HTML。"
+        description="将 notes 下的 Markdown 发布为 web/page 下的 HTML。"
     )
     parser.add_argument(
         "articles",

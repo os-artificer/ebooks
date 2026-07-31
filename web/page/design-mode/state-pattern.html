@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-07-26  |  阅读时长：约 15 分钟</p>
+<p>你有没有写过这样的代码：一个类里塞了七八个 <code>if</code> 分支判断当前是什么状态，每次新增一个状态，就得在十几个函数里各加一个分支？</p>
+<p>你有没有改过这样的 bug：某条状态转换路径漏了一处检查，导致用户在"已支付"状态下又触发了一次"下单"？</p>
+<p><strong>状态机模式（State Pattern）</strong> 就是干掉这类问题的利器——它把"状态 + 行为"封装成独立对象，让对象在运行时切换状态时，行为也随之改变。</p>
+<hr />
+<h2>🕳️ 先看问题：if-else 地狱长什么样</h2>
+<p>先看一个反面教材。</p>
+<p>假设你在写一台自动售货机，用枚举记录状态：</p>
+<pre><code class="language-cpp">// 反面教材：枚举 + switch 硬写
+enum class VendingState { IDLE, HAS_COIN, SOLD, SOLD_OUT };
+
+class NaiveVendingMachine {
+    VendingState _state = VendingState::IDLE;
+    int _stock = 0;
+
+public:
+    void insertCoin() {
+        switch (_state) {
+        case VendingState::IDLE:
+            _state = VendingState::HAS_COIN;
+            std::cout &lt;&lt; &quot;投入硬币\n&quot;;
+            break;
+        case VendingState::HAS_COIN:
+            std::cout &lt;&lt; &quot;已经投过币了\n&quot;;
+            break;
+        case VendingState::SOLD:
+            std::cout &lt;&lt; &quot;正在出货，请稍候\n&quot;;
+            break;
+        case VendingState::SOLD_OUT:
+            std::cout &lt;&lt; &quot;已售罄\n&quot;;
+            break;
+        }
+    }
+
+    void ejectCoin() {
+        // 又一坨一模一样的 switch...
+    }
+
+    void selectProduct() {
+        // 又一坨 switch，里面还要嵌 if 判断库存...
+    }
+};
+</code></pre>
+<p>问题在哪儿？</p>
+<ul>
+<li><strong>每加一个状态</strong>，就得在 <code>insertCoin</code>、<code>ejectCoin</code>、<code>selectProduct</code>……每个方法里各加一个 <code>case</code>。改 N 处，漏一处就是 bug。</li>
+<li><strong>每加一个操作</strong>，又得在所有状态里各写一遍分支逻辑。</li>
+<li><strong>状态转换逻辑散落各处</strong>：看代码时你没法一眼知道"从 A 状态能转到哪些状态"，得把所有 <code>switch</code> 读一遍拼出来。</li>
+<li><strong>测试难写</strong>：想单独测"HasCoin 状态下 ejectCoin 的行为"，得先把机器状态设对、跑完逻辑、再检查状态是否正确切换，耦合度高。</li>
+</ul>
+<p>本质上，这是因为<strong>状态判断</strong>和<strong>行为实现</strong>耦合在了一起。状态机模式要做的，就是把它们拆开。</p>
+<hr />
+<h2>🧩 状态机模式是什么</h2>
+<h3>核心思想</h3>
+<p><strong>把每个状态封装成独立的类，让上下文对象把操作委托给当前状态对象。</strong></p>
+<p><strong>"对象的行为随状态而变"——不改状态判断，改委托对象。</strong></p>
+<p>对比一下：</p>
+<table>
+<thead>
+<tr>
+<th>做法</th>
+<th>状态切换的本质</th>
+<th>加新状态的代价</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>枚举 + switch</td>
+<td>改一个枚举值</td>
+<td>改每个方法的 switch（N 处）</td>
+</tr>
+<tr>
+<td>状态机模式</td>
+<td>换一个委托对象</td>
+<td>只加一个新类（仅改动 1 处）</td>
+</tr>
+</tbody>
+</table>
+<h3>状态机模式的三个核心角色</h3>
+<p>状态机模式只有三个角色，关系非常清晰：</p>
+<ul>
+<li><strong>State（抽象状态接口）</strong>：声明所有事件方法。每个具体状态各自实现"在我这个状态下，这个事件该怎么处理"。</li>
+<li><strong>ConcreteState（具体状态）</strong>：实现 State 接口，封装该状态下的行为和状态转换逻辑。它知道自己能转到哪些状态、转过去的条件是什么。</li>
+<li><strong>Context（上下文）</strong>：持有当前状态对象的引用，把所有客户端请求<strong>委托</strong>给当前状态。提供 <code>setState()</code> 供具体状态调用以完成切换。</li>
+</ul>
+<p>关键点：<strong>状态转换逻辑不在 Context 里，而在具体状态类里</strong>。Context 只管"我现在持有哪个状态"，不管"什么时候该转"。</p>
+<hr />
+<h2>🗺️ UML 类关系图</h2>
+<p>下面是状态机模式的类关系图。</p>
+<p>Context 持有 State 指针，具体状态类实现 State 接口，并通过调用 Context 的 <code>setState()</code> 完成状态切换。</p>
+<div class="mermaid">
+classDiagram
+    class State {
+        &lt;&lt;Interface&gt;&gt;
+        +insertCoin(m) void
+        +ejectCoin(m) void
+        +selectProduct(m) void
+        +dispense(m) void
+        +name() String
+    }
+    class VendingMachine {
+        -State _state
+        -int _stock
+        +insertCoin() void
+        +ejectCoin() void
+        +selectProduct() void
+        +dispense() void
+        +setState(State) void
+        +dispenseProduct() void
+        +refill(int) void
+        +stock() int
+    }
+    class IdleState {
+        +insertCoin(m) void
+        +ejectCoin(m) void
+        +selectProduct(m) void
+        +dispense(m) void
+    }
+    class HasCoinState {
+        +insertCoin(m) void
+        +ejectCoin(m) void
+        +selectProduct(m) void
+        +dispense(m) void
+    }
+    class SoldState {
+        +insertCoin(m) void
+        +ejectCoin(m) void
+        +selectProduct(m) void
+        +dispense(m) void
+    }
+    class SoldOutState {
+        +insertCoin(m) void
+        +ejectCoin(m) void
+        +selectProduct(m) void
+        +dispense(m) void
+    }
+
+    VendingMachine --&gt; State
+    State &lt;|.. IdleState
+    State &lt;|.. HasCoinState
+    State &lt;|.. SoldState
+    State &lt;|.. SoldOutState
+    IdleState ..&gt; VendingMachine
+    HasCoinState ..&gt; VendingMachine
+    SoldState ..&gt; VendingMachine
+    SoldOutState ..&gt; VendingMachine
+</div>
+<p>再看状态转换图——这才是状态机最直观的视图。</p>
+<p>每个箭头标注触发转换的事件：</p>
+<div class="mermaid">
+stateDiagram-v2
+    [*] --&gt; Idle : 初始化(有库存)
+    [*] --&gt; SoldOut : 初始化(无库存)
+    Idle --&gt; HasCoin : insertCoin()
+    HasCoin --&gt; Idle : ejectCoin()
+    HasCoin --&gt; Sold : selectProduct()(有库存)
+    HasCoin --&gt; SoldOut : selectProduct()(无库存)
+    Sold --&gt; Idle : dispense()(仍有库存)
+    Sold --&gt; SoldOut : dispense()(库存耗尽)
+    SoldOut --&gt; Idle : refill()
+</div>
+<p>两张图配合着看：类图回答"谁持有谁、谁实现谁"，状态转换图回答"什么事件触发什么转换"。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>消灭巨型条件分支</h3>
+<p>这是最直接的收益。原来每个方法里一个 <code>switch(state)</code>，现在每个状态类只管自己的逻辑，没有 <code>switch</code>、没有 <code>if</code> 判断当前状态。</p>
+<h3>开闭原则</h3>
+<p>加新状态时，只需新建一个类实现 State 接口，在需要转换的地方调用 <code>setState()</code>。<strong>不修改任何已有状态类的代码</strong>——对扩展开放、对修改关闭。</p>
+<h3>状态转换集中管理</h3>
+<p>每条转换规则写在<strong>触发它的那个具体状态类里</strong>。比如"从 HasCoin 到 Sold"的转换写在 <code>HasCoinState::selectProduct()</code> 里，"从 Sold 到 Idle/SoldOut"的转换写在 <code>SoldState::dispense()</code> 里。你想知道从 A 能转到哪，看 A 的代码就行，不用满项目搜。</p>
+<h3>单元测试友好</h3>
+<p>每个状态类是独立的、可实例化的对象。测 <code>HasCoinState</code> 在 <code>selectProduct</code> 时的行为，直接构造一个 <code>VendingMachine</code>（或 mock），设成 <code>HasCoin</code> 状态，调用方法，断言结果。不需要先走一遍"从 Idle 到 HasCoin"的前置流程。</p>
+<hr />
+<h2>🌐 典型应用场景</h2>
+<p>状态机模式适用于"一个对象在生命周期内会在几种状态间切换，且不同状态下对同一事件的响应不同"的场景。</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>典型状态</th>
+<th>典型事件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>网络协议</strong>（如 TCP 连接）</td>
+<td>CLOSED、LISTEN、SYN_SENT、ESTABLISHED、CLOSE_WAIT</td>
+<td>open、connect、accept、send、close</td>
+</tr>
+<tr>
+<td><strong>订单/工单流转</strong></td>
+<td>待支付、已支付、已发货、已签收、已取消</td>
+<td>pay、ship、confirm、cancel</td>
+</tr>
+<tr>
+<td><strong>游戏 AI</strong></td>
+<td>巡逻、追击、攻击、逃跑、死亡</td>
+<td>seePlayer、takeDamage、heal</td>
+</tr>
+<tr>
+<td><strong>媒体播放器</strong></td>
+<td>停止、播放、暂停</td>
+<td>play、pause、stop、seek</td>
+</tr>
+<tr>
+<td><strong>自动售货机</strong></td>
+<td>待机、已投币、出货中、售罄</td>
+<td>insertCoin、ejectCoin、selectProduct</td>
+</tr>
+<tr>
+<td><strong>审批流程</strong></td>
+<td>草稿、待审、审核中、通过、驳回</td>
+<td>submit、approve、reject、publish</td>
+</tr>
+</tbody>
+</table>
+<p>📌 <strong>判断要不要用状态机模式，可以试着问自己三个问题</strong>：</p>
+<ol>
+<li>对象是否有<strong>多个明确的状态</strong>？—— 如果只有"开/关"两态，一个 <code>bool</code> 就够了，别上模式。</li>
+<li>不同状态下<strong>对同一操作的响应不同</strong>？—— 如果行为一致，只是数据不同，状态模式就是过度设计。</li>
+<li>状态转换是否<strong>有规则、有约束</strong>？—— 状态模式的核心价值，是显式建模"哪些跳转合法"、从而挡住非法转换。若状态之间可以随意互转、毫无约束，那就没有需要被拦截的非法跳转，状态模式也就没有用武之地。</li>
+</ol>
+<p>三个都"是"，就值得上。</p>
+<hr />
+<h2>💻 C++ 实现实践</h2>
+<h3>场景设定：自动售货机</h3>
+<p>我们用自动售货机做演示——它有 4 个状态、3 个用户操作、1 个内部出货操作，足够展示模式精髓又不会太复杂。</p>
+<p>状态定义：</p>
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>含义</th>
+<th>允许的操作</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Idle</strong>（待机）</td>
+<td>等待投币</td>
+<td>insertCoin → HasCoin</td>
+</tr>
+<tr>
+<td><strong>HasCoin</strong>（已投币）</td>
+<td>等待选商品</td>
+<td>ejectCoin → Idle；selectProduct → Sold/SoldOut</td>
+</tr>
+<tr>
+<td><strong>Sold</strong>（出货）</td>
+<td>正在出货（瞬时）</td>
+<td>dispense → Idle/SoldOut</td>
+</tr>
+<tr>
+<td><strong>SoldOut</strong>（售罄）</td>
+<td>无库存</td>
+<td>refill → Idle</td>
+</tr>
+</tbody>
+</table>
+<h3>伪代码骨架</h3>
+<p>先看骨架，理解结构：</p>
+<pre><code class="language-cpp">// 前向声明
+class VendingMachine;
+
+// ---- 抽象状态接口 ----
+class State {
+public:
+    virtual ~State() = default;
+    virtual void insertCoin(VendingMachine&amp; m) = 0;
+    virtual void ejectCoin(VendingMachine&amp; m) = 0;
+    virtual void selectProduct(VendingMachine&amp; m) = 0;
+    virtual void dispense(VendingMachine&amp; m) = 0;
+};
+
+// ---- 上下文 ----
+class VendingMachine {
+    std::shared_ptr&lt;State&gt; _state;  // 当前状态
+    int _stock;                     // 库存
+public:
+    void insertCoin()    { _state-&gt;insertCoin(*this); }    // 委托
+    void ejectCoin()     { _state-&gt;ejectCoin(*this); }     // 委托
+    void selectProduct() { _state-&gt;selectProduct(*this); } // 委托
+    void dispense()      { _state-&gt;dispense(*this); }      // 委托
+    void setState(std::shared_ptr&lt;State&gt; s) { _state = s; }
+    int stock() const { return _stock; }
+    void dispenseProduct() { --_stock; }
+};
+
+// ---- 具体状态（以 HasCoinState 为例）----
+class HasCoinState : public State {
+public:
+    void selectProduct(VendingMachine&amp; m) override {
+        if (m.stock() &gt; 0) {
+            m.setState(m.soldState());  // 转到出货状态
+            m.dispense();                // 委托给 SoldState 处理出货
+        } else {
+            m.setState(m.soldOutState()); // 无库存，转到售罄
+        }
+    }
+    // ... 其他方法
+};
+</code></pre>
+<p>核心模式就这几行：<strong>Context 委托、State 实现、具体状态调用 <code>setState()</code> 切换</strong>。</p>
+<h3>关键实现决策</h3>
+<p>在写完整代码之前，有几个工程决策值得展开讲。</p>
+<p><strong>🔧 决策：状态对象是否共享？</strong></p>
+<p>具体状态类通常<strong>没有数据成员</strong>（状态机的数据全在 Context 里），因此一个状态实例可以被多次复用。用 <code>shared_ptr</code> 持有共享实例，避免每次切换都 <code>make_shared</code> 分配内存：</p>
+<pre><code class="language-cpp">class VendingMachine {
+    // 共享状态实例（无数据成员，可复用）
+    std::shared_ptr&lt;State&gt; _idleState;
+    std::shared_ptr&lt;State&gt; _hasCoinState;
+    // ...
+};
+</code></pre>
+<p><strong>🔧 决策：状态方法怎么拿到 Context？</strong></p>
+<p>有两种常见写法：</p>
+<ul>
+<li><strong>参数传递</strong>：<code>void insertCoin(VendingMachine&amp; m)</code> —— 每次调用传引用，状态对象本身不持有 Context。<strong>推荐</strong>，因为状态是无状态的、可共享的。</li>
+<li><strong>状态对象持有 Context 指针</strong>：<code>State</code> 构造时传入 <code>Context*</code> —— 状态与 Context 绑定，不能共享。适合状态需要长期跟踪 Context 变化的场景。</li>
+</ul>
+<p><strong>🔧 决策：状态切换由谁触发？</strong></p>
+<p>由<strong>具体状态类</strong>触发。比如 <code>HasCoinState::selectProduct()</code> 里调 <code>m.setState(m.soldState())</code>。Context 不参与决策，只提供 <code>setState()</code> 接口。这是 State 模式与 Strategy 模式的关键区别——Strategy 的策略切换由客户端控制，State 的状态切换由状态自身驱动。</p>
+<p><strong>🔧 决策：<code>dispense()</code> 是用户操作吗？</strong></p>
+<p>不是。用户只有 <code>insertCoin</code>、<code>ejectCoin</code>、<code>selectProduct</code> 三个操作。<code>dispense()</code> 是内部方法，由 <code>HasCoinState::selectProduct()</code> 在切换到 <code>SoldState</code> 后自动触发。把它也放进 State 接口，是因为不同状态对"意外出货"的响应不同（大多数状态应拒绝），让状态自己判断更内聚。</p>
+<h3>完整代码</h3>
+<p>完整可编译代码在 <code>src/cpp/design-mode/state_machine_demo.cpp</code>，核心结构如下：</p>
+<pre><code class="language-cpp">#include &lt;iostream&gt;
+#include &lt;memory&gt;
+#include &lt;string&gt;
+
+class VendingMachine;
+
+// ---- 抽象状态接口 ----
+class State {
+public:
+    virtual ~State() = default;
+    virtual void insertCoin(VendingMachine&amp; m) = 0;
+    virtual void ejectCoin(VendingMachine&amp; m) = 0;
+    virtual void selectProduct(VendingMachine&amp; m) = 0;
+    virtual void dispense(VendingMachine&amp; m) = 0;
+    virtual std::string name() const = 0;
+};
+
+// ---- 上下文 ----
+class VendingMachine {
+public:
+    explicit VendingMachine(int stock);
+    void insertCoin()    { _state-&gt;insertCoin(*this); }
+    void ejectCoin()     { _state-&gt;ejectCoin(*this); }
+    void selectProduct() { _state-&gt;selectProduct(*this); }
+    void dispense()      { _state-&gt;dispense(*this); }
+
+    void setState(std::shared_ptr&lt;State&gt; s) {
+        std::cout &lt;&lt; &quot;  [状态切换] &quot; &lt;&lt; _state-&gt;name()
+                  &lt;&lt; &quot; -&gt; &quot; &lt;&lt; s-&gt;name() &lt;&lt; &quot;\n&quot;;
+        _state = std::move(s);
+    }
+    void dispenseProduct() { --_stock; }
+    int stock() const { return _stock; }
+    void refill(int n) {
+        _stock += n;
+        if (_stock &gt; 0 &amp;&amp; _state == _soldOutState)
+            setState(_idleState);
+    }
+
+    std::shared_ptr&lt;State&gt; idleState()    const { return _idleState; }
+    std::shared_ptr&lt;State&gt; hasCoinState() const { return _hasCoinState; }
+    std::shared_ptr&lt;State&gt; soldState()    const { return _soldState; }
+    std::shared_ptr&lt;State&gt; soldOutState() const { return _soldOutState; }
+
+private:
+    std::shared_ptr&lt;State&gt; _state;
+    int _stock;
+    std::shared_ptr&lt;State&gt; _idleState, _hasCoinState, _soldState, _soldOutState;
+};
+
+// ---- IdleState：投币 -&gt; HasCoin ----
+class IdleState : public State {
+public:
+    void insertCoin(VendingMachine&amp; m) override {
+        std::cout &lt;&lt; &quot;  投入硬币，等待选择商品\n&quot;;
+        m.setState(m.hasCoinState());
+    }
+    void ejectCoin(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  当前没有投币，无法退币\n&quot;;
+    }
+    void selectProduct(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  请先投币再选择商品\n&quot;;
+    }
+    void dispense(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  待机状态不支持出货\n&quot;;
+    }
+    std::string name() const override { return &quot;待机(Idle)&quot;; }
+};
+
+// ---- HasCoinState：选商品 -&gt; Sold/SoldOut ----
+class HasCoinState : public State {
+public:
+    void insertCoin(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  已经投过币了\n&quot;;
+    }
+    void ejectCoin(VendingMachine&amp; m) override {
+        std::cout &lt;&lt; &quot;  退回硬币\n&quot;;
+        m.setState(m.idleState());
+    }
+    void selectProduct(VendingMachine&amp; m) override {
+        if (m.stock() &gt; 0) {
+            std::cout &lt;&lt; &quot;  选择商品，准备出货\n&quot;;
+            m.setState(m.soldState());
+            m.dispense();
+        } else {
+            m.setState(m.soldOutState());
+        }
+    }
+    void dispense(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  已投币状态不支持直接出货\n&quot;;
+    }
+    std::string name() const override { return &quot;已投币(HasCoin)&quot;; }
+};
+
+// ---- SoldState：出货 -&gt; Idle/SoldOut ----
+class SoldState : public State {
+public:
+    void insertCoin(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  正在出货，请稍候\n&quot;;
+    }
+    void ejectCoin(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  已选择商品，无法退币\n&quot;;
+    }
+    void selectProduct(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  正在出货，请稍候\n&quot;;
+    }
+    void dispense(VendingMachine&amp; m) override {
+        m.dispenseProduct();
+        if (m.stock() &gt; 0)
+            m.setState(m.idleState());
+        else
+            m.setState(m.soldOutState());
+    }
+    std::string name() const override { return &quot;出货(Sold)&quot;; }
+};
+
+// ---- SoldOutState：售罄 ----
+class SoldOutState : public State {
+public:
+    void insertCoin(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  商品已售罄，退回硬币\n&quot;;
+    }
+    void ejectCoin(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  当前没有投币，无法退币\n&quot;;
+    }
+    void selectProduct(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  商品已售罄\n&quot;;
+    }
+    void dispense(VendingMachine&amp;) override {
+        std::cout &lt;&lt; &quot;  售罄状态不支持出货\n&quot;;
+    }
+    std::string name() const override { return &quot;售罄(SoldOut)&quot;; }
+};
+
+// 构造函数（在具体状态类定义之后）
+VendingMachine::VendingMachine(int stock)
+    : _stock(stock)
+    , _idleState(std::make_shared&lt;IdleState&gt;())
+    , _hasCoinState(std::make_shared&lt;HasCoinState&gt;())
+    , _soldState(std::make_shared&lt;SoldState&gt;())
+    , _soldOutState(std::make_shared&lt;SoldOutState&gt;())
+{
+    _state = (_stock &gt; 0) ? _idleState : _soldOutState;
+}
+</code></pre>
+<p>运行输出（精简版）：</p>
+<pre><code>--- 场景 1：正常购买 ---
+  [状态切换] 待机(Idle) -&gt; 已投币(HasCoin)
+  [状态切换] 已投币(HasCoin) -&gt; 出货(Sold)
+  商品已出货，剩余库存: 1
+  [状态切换] 出货(Sold) -&gt; 待机(Idle)
+
+--- 场景 4：买走最后一件 ---
+  [状态切换] 待机(Idle) -&gt; 已投币(HasCoin)
+  [状态切换] 已投币(HasCoin) -&gt; 出货(Sold)
+  商品已出货，剩余库存: 0
+  [状态切换] 出货(Sold) -&gt; 售罄(SoldOut)
+
+--- 场景 6：补货后恢复正常 ---
+  补货 3 件，当前库存: 3
+  [状态切换] 售罄(SoldOut) -&gt; 待机(Idle)
+</code></pre>
+<hr />
+<h2>🚀 进阶：现代 C++ 的改进方向</h2>
+<p>上面的实现是经典写法（继承 + 虚函数），在大多数场景已经够用。但如果你追求更高性能或更现代的表达力，还有几条路可以走。</p>
+<h3>表驱动状态转换</h3>
+<p>当状态多、转换规则复杂时，把转换规则抽成数据表比散落在代码里更清晰：</p>
+<pre><code class="language-cpp">// 转换表：(当前状态, 事件) -&gt; (下一状态, 动作)
+struct Transition {
+    StateID from;
+    EventID event;
+    StateID to;
+    std::function&lt;void(VendingMachine&amp;)&gt; action;
+};
+
+std::vector&lt;Transition&gt; transitionTable = {
+    {IDLE,     INSERT_COIN,    HAS_COIN, nullptr},
+    {HAS_COIN, EJECT_COIN,     IDLE,     nullptr},
+    {HAS_COIN, SELECT_PRODUCT, SOLD,     [](VendingMachine&amp; m){ /* ... */ }},
+    {SOLD,     DISPENSE,       IDLE,     [](VendingMachine&amp; m){ m.dispenseProduct(); }},
+    // ...
+};
+</code></pre>
+<p>好处：所有转换规则集中一处，一目了然；新增状态/事件只改表不改代码。</p>
+<p>⚠️ 注意：表驱动把行为从"多态分发"变成"查表 + 函数调用"，适合状态数多、转换规则复杂的场景（如协议栈）。状态只有三五个时，经典继承写法更直观。</p>
+<h3>用 <code>std::variant</code> 替代虚函数（C++17）</h3>
+<p>C++17 的 <code>std::variant</code> + <code>std::visit</code> 可以实现<strong>无虚函数的状态机</strong>——编译期多态，零虚表开销：</p>
+<pre><code class="language-cpp">struct IdleState {};
+struct HasCoinState {};
+struct SoldState {};
+struct SoldOutState {};
+
+using VState = std::variant&lt;IdleState, HasCoinState, SoldState, SoldOutState&gt;;
+
+// 每个事件是一个 visitor；返回 std::optional&lt;VState&gt; 表示&quot;是否切换&quot;
+struct InsertCoinVisitor {
+    VendingMachine&amp; machine;
+    std::optional&lt;VState&gt; operator()(IdleState&amp;) {
+        std::cout &lt;&lt; &quot;投入硬币\n&quot;;
+        return HasCoinState{};  // 切换到 HasCoin
+    }
+    std::optional&lt;VState&gt; operator()(HasCoinState&amp;) {
+        std::cout &lt;&lt; &quot;已经投过币了\n&quot;;
+        return std::nullopt;    // 不切换
+    }
+    // ... 其他状态
+};
+</code></pre>
+<p>好处：无虚调用、无堆分配、状态类型安全。</p>
+<p>代价：加新状态要改 <code>variant</code> 模板参数和所有 visitor，扩展性不如继承方案。</p>
+<h3>状态池化与生命周期管理</h3>
+<p>经典写法用 <code>shared_ptr</code> 共享状态实例，已经避免了反复分配。进一步优化：</p>
+<ul>
+<li>
+<p><strong>静态单例</strong>：如果确定状态对象只读、无数据成员，可以用 <code>static</code> 单例 + 裸指针引用，零分配、零引用计数开销：
+  <code>cpp
+  static IdleState s_idleState;
+  // machine.setState(&amp;s_idleState);</code></p>
+</li>
+<li>
+<p><strong>Arena 分配</strong>：状态多且有数据成员时，用 Arena 一次性分配所有状态对象，避免零散堆分配。</p>
+</li>
+</ul>
+<p>📌 性能选择的判断标准：状态机不是热路径（大多数业务逻辑不是），经典 <code>shared_ptr</code> 写法足够。只有每秒触发百万次状态转换的场景（如网络协议栈解析），才值得上 <code>variant</code> 或静态单例。</p>
+<hr />
+<h2>📌 小结</h2>
+<ul>
+<li><strong>是什么</strong>：把每个状态封装成独立类，Context 委托当前状态处理事件，状态类自己决定是否切换、切到哪。<strong>"改委托对象"替代"改状态判断"。</strong></li>
+<li><strong>解决什么</strong>：消灭巨型 <code>switch/if-else</code>，遵守开闭原则（加状态不改旧代码），状态转换集中可追溯，单元测试独立友好。</li>
+<li><strong>什么时候用</strong>：对象有多个明确状态、不同状态对同一操作响应不同、转换有规则约束。三问全"是"才上。</li>
+<li><strong>怎么实现</strong>：State 抽象接口 + ConcreteState 具体实现 + Context 委托持有。C++ 中用 <code>shared_ptr</code> 管理共享状态实例，状态转换由具体状态类调用 <code>Context::setState()</code> 触发。</li>
+<li><strong>进阶</strong>：表驱动适合复杂转换图、<code>std::variant</code> 适合追求零开销的热路径、静态单例适合确定性状态机。按场景选，别过度设计。</li>
+</ul>
+<p>如果你手头有具体场景（例如"TCP 连接 11 状态 + 6 个事件"或"订单 8 状态流转"），可以先把状态转换图画出来，再决定用经典继承还是表驱动——图清晰了，实现方式就是水到渠成的事。</p>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库 <a href="https://github.com/os-artificer/ebooks">os-artificer/ebooks</a>，位于 <code>src/cpp/design-mode/</code> 目录。进入 <code>src/cpp/</code> 目录执行 <code>make bin/state_machine_demo</code> 即可编译本示例（或执行 <code>make</code> 编译全部示例）。文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/design-mode/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
