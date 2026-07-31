@@ -11,11 +11,17 @@
       a{color:#2563eb;text-decoration:none;}
       a:hover{text-decoration:underline;}
       img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
       table{border-collapse:collapse;}
       th,td{border:1px solid #d1d5db;padding:6px 10px;}
       th{background:#f9fafb;}
       article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
       article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
     </style>
 </head>
 <body>
@@ -150,11 +156,13 @@
                    v
           128-bit hash, 然后设置 version=3, variant=10xx
 </code></pre>
-<p><strong>常用命名空间：</strong>
-- <code>6ba7b810-9dad-11d1-80b4-00c04fd430c8</code> — DNS
-- <code>6ba7b811-9dad-11d1-80b4-00c04fd430c8</code> — URL
-- <code>6ba7b812-9dad-11d1-80b4-00c04fd430c8</code> — OID
-- <code>6ba7b814-9dad-11d1-80b4-00c04fd430c8</code> — X.500 DN</p>
+<p><strong>常用命名空间：</strong></p>
+<ul>
+<li><code>6ba7b810-9dad-11d1-80b4-00c04fd430c8</code> — DNS</li>
+<li><code>6ba7b811-9dad-11d1-80b4-00c04fd430c8</code> — URL</li>
+<li><code>6ba7b812-9dad-11d1-80b4-00c04fd430c8</code> — OID</li>
+<li><code>6ba7b814-9dad-11d1-80b4-00c04fd430c8</code> — X.500 DN</li>
+</ul>
 <p><strong>隐私风险：</strong> 不可逆，但可以暴力枚举已知的 namespace + name 组合。</p>
 <h3>2.4 UUID v4 — 随机数</h3>
 <p>v4 是最常用的版本，除 version（4 bits）和 variant（2 bits）外，其余 <strong>122 bits 全部随机</strong>。</p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>从 UDP 到可靠传输：KCP 与 QUIC 的原理、对比与选择</title>
+    <title>方法 1: 使用 curl 测试 QUIC/HTTP/3 连接</title>
     <style>
       body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
       pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
@@ -11,6 +11,8 @@
       a{color:#2563eb;text-decoration:none;}
       a:hover{text-decoration:underline;}
       img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
       ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
       li{margin:0.25rem 0;}
       blockquote ul,blockquote ol{margin:0.5rem 0;}
@@ -19,11 +21,12 @@
       th{background:#f9fafb;}
       article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
       article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
     </style>
 </head>
 <body>
     <article>
-      <h1 style="margin-top:0">从 UDP 到可靠传输：KCP 与 QUIC 的原理、对比与选择</h1>
+      <h1 style="margin-top:0">方法 1: 使用 curl 测试 QUIC/HTTP/3 连接</h1>
       <p align="center"><strong>作者：</strong>Artificer老王 &nbsp;&nbsp;|&nbsp;&nbsp; <strong>更新时间：</strong>2026-07-12 &nbsp;&nbsp;|&nbsp;&nbsp; <strong>阅读时长：</strong>约 25 分钟</p>
 
 <hr />

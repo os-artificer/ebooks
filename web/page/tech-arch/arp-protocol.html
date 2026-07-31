@@ -24,16 +24,8 @@
       .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
     </style>
     <script type="module">
-      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
-      document.querySelectorAll('pre > code.language-mermaid').forEach((el) => {
-        const pre = el.parentElement;
-        const div = document.createElement('div');
-        div.className = 'mermaid';
-        div.textContent = el.textContent;
-        pre.replaceWith(div);
-      });
-      mermaid.run();
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
     </script>
 </head>
 <body>
@@ -58,15 +50,15 @@
 <p>要理解 ARP 为什么存在，先得搞清楚网络协议栈中的两层地址：</p>
 <div class="mermaid">
 flowchart TB
-    App["应用层 (HTTP, DNS …)"]
-    Trans["传输层 (TCP, UDP) · 端口 Port"]
-    Net["网络层 (IP / ICMP) · IP 地址<br/>“我要发给谁（逻辑位置）？”"]
-    Link["数据链路层 (Ethernet / Wi-Fi) · MAC 地址<br/>“实际交给哪台设备（物理身份）？”"]
-    Phys["物理层 (网线, 无线电波)"]
-    ARP["ARP：IP ↔ MAC 的“翻译官”"]
-    App --> Trans --> Net --> Link --> Phys
-    Net -.->|"解析目标 MAC"| ARP
-    ARP -.->|"封装进帧"| Link
+    App[&quot;应用层 (HTTP, DNS …)&quot;]
+    Trans[&quot;传输层 (TCP, UDP) · 端口 Port&quot;]
+    Net[&quot;网络层 (IP / ICMP) · IP 地址&lt;br/&gt;“我要发给谁（逻辑位置）？”&quot;]
+    Link[&quot;数据链路层 (Ethernet / Wi-Fi) · MAC 地址&lt;br/&gt;“实际交给哪台设备（物理身份）？”&quot;]
+    Phys[&quot;物理层 (网线, 无线电波)&quot;]
+    ARP[&quot;ARP：IP ↔ MAC 的“翻译官”&quot;]
+    App --&gt; Trans --&gt; Net --&gt; Link --&gt; Phys
+    Net -.-&gt;|&quot;解析目标 MAC&quot;| ARP
+    ARP -.-&gt;|&quot;封装进帧&quot;| Link
 </div>
 <p><strong>核心矛盾</strong>：</p>
 <table>
@@ -185,11 +177,11 @@ flowchart TB
 <p>在 TCP/IP 模型中，RFC 1122 将 ARP 归入<strong>链路层</strong>；从功能上看，它承担 IPv4 地址到链路层地址的映射，因此常被形容为连接网络层与链路层的辅助协议：</p>
 <div class="mermaid">
 flowchart TB
-    L3["网络层 (IPv4)<br/>源 / 目的 IP 地址"]
-    ARP["ARP (Address Resolution Protocol)<br/>RFC 826 · STD 37 (1982)<br/>“翻译官”：IP ↔ MAC"]
-    L2["以太网帧 (L2)<br/>目的 / 源 MAC 地址"]
-    L3 -->|"需要知道目标 MAC"| ARP
-    ARP -->|"封装在以太网帧中"| L2
+    L3[&quot;网络层 (IPv4)&lt;br/&gt;源 / 目的 IP 地址&quot;]
+    ARP[&quot;ARP (Address Resolution Protocol)&lt;br/&gt;RFC 826 · STD 37 (1982)&lt;br/&gt;“翻译官”：IP ↔ MAC&quot;]
+    L2[&quot;以太网帧 (L2)&lt;br/&gt;目的 / 源 MAC 地址&quot;]
+    L3 --&gt;|&quot;需要知道目标 MAC&quot;| ARP
+    ARP --&gt;|&quot;封装在以太网帧中&quot;| L2
 </div>
 <h3>报文格式详解（9 个字段）</h3>
 <p>ARP 报文直接封装在以太网帧的数据部分。</p>
@@ -197,33 +189,33 @@ flowchart TB
 <h4>A. 外层以太网帧头</h4>
 <div class="mermaid">
 flowchart LR
-    DST["目的 MAC<br/>(6 字节)<br/>请求时 = 广播"]
-    SRC["源 MAC<br/>(6 字节)"]
-    ET["EtherType<br/>(2 字节)<br/>0x0806 = ARP"]
-    ARP["ARP 报文<br/>(28 字节)<br/>含 9 个字段<br/>需填充 18 字节至 46 字节最小载荷"]
-    FCS["帧尾 FCS (4 字节，抓包工具通常不显示)"]
-    DST --> SRC --> ET --> ARP --> FCS
+    DST[&quot;目的 MAC&lt;br/&gt;(6 字节)&lt;br/&gt;请求时 = 广播&quot;]
+    SRC[&quot;源 MAC&lt;br/&gt;(6 字节)&quot;]
+    ET[&quot;EtherType&lt;br/&gt;(2 字节)&lt;br/&gt;0x0806 = ARP&quot;]
+    ARP[&quot;ARP 报文&lt;br/&gt;(28 字节)&lt;br/&gt;含 9 个字段&lt;br/&gt;需填充 18 字节至 46 字节最小载荷&quot;]
+    FCS[&quot;帧尾 FCS (4 字节，抓包工具通常不显示)&quot;]
+    DST --&gt; SRC --&gt; ET --&gt; ARP --&gt; FCS
 </div>
 <p>对 Ethernet/IPv4 ARP，28 字节 ARP 报文需要填充 18 字节，达到 46 字节最小以太网载荷；加上 14 字节以太网头和 4 字节 FCS 后，帧长为 64 字节（不含前导码和帧间隙）。常见抓包工具不显示 FCS。</p>
 <h4>B. ARP 报文字段（核心）</h4>
 <div class="mermaid">
 flowchart TB
-    subgraph ROW1["报文头部（前 8 字节）"]
+    subgraph ROW1[&quot;报文头部（前 8 字节）&quot;]
         direction LR
-        HD["ar_hrd 硬件类型<br/>(2 字节) 如 1=Ethernet"]
-        PRO["ar_pro 协议类型<br/>(2 字节) 如 0x0800=IPv4"]
+        HD[&quot;ar_hrd 硬件类型&lt;br/&gt;(2 字节) 如 1=Ethernet&quot;]
+        PRO[&quot;ar_pro 协议类型&lt;br/&gt;(2 字节) 如 0x0800=IPv4&quot;]
     end
     subgraph ROW2
         direction LR
-        HLN["ar_hln 硬件地址长度 (1 字节) 如 6"]
-        PLN["ar_pln 协议地址长度 (1 字节) 如 4"]
-        OP["ar_op 操作码 (2 字节) 1=Request 2=Reply"]
+        HLN[&quot;ar_hln 硬件地址长度 (1 字节) 如 6&quot;]
+        PLN[&quot;ar_pln 协议地址长度 (1 字节) 如 4&quot;]
+        OP[&quot;ar_op 操作码 (2 字节) 1=Request 2=Reply&quot;]
     end
-    SHA["ar_sha 发送者硬件地址 / MAC (6 字节)"]
-    SPA["ar_spa 发送者协议地址 / IP (4 字节)"]
-    THA["ar_tha 目标硬件地址 / MAC (6 字节，请求中填 0)"]
-    TPA["ar_tpa 目标协议地址 / IP (4 字节)"]
-    ROW1 --> ROW2 --> SHA --> SPA --> THA --> TPA
+    SHA[&quot;ar_sha 发送者硬件地址 / MAC (6 字节)&quot;]
+    SPA[&quot;ar_spa 发送者协议地址 / IP (4 字节)&quot;]
+    THA[&quot;ar_tha 目标硬件地址 / MAC (6 字节，请求中填 0)&quot;]
+    TPA[&quot;ar_tpa 目标协议地址 / IP (4 字节)&quot;]
+    ROW1 --&gt; ROW2 --&gt; SHA --&gt; SPA --&gt; THA --&gt; TPA
 </div>
 <h4>各字段详细说明</h4>
 <table>
@@ -364,13 +356,13 @@ sequenceDiagram
     participant A as Host A
     participant B as Host B
 
-    Note over A: ping 192.168.1.200<br/>缓存未命中 → 发起 ARP
-    A->>B: ① ARP Request（广播）<br/>目标: 192.168.1.200
-    Note over B: ② 校验目标 IP<br/>匹配 → 准备回复
-    B->>A: ③ ARP Reply（单播）<br/>MAC: BB:BB:BB:BB:BB:BB
+    Note over A: ping 192.168.1.200&lt;br/&gt;缓存未命中 → 发起 ARP
+    A-&gt;&gt;B: ① ARP Request（广播）&lt;br/&gt;目标: 192.168.1.200
+    Note over B: ② 校验目标 IP&lt;br/&gt;匹配 → 准备回复
+    B-&gt;&gt;A: ③ ARP Reply（单播）&lt;br/&gt;MAC: BB:BB:BB:BB:BB:BB
     Note over A: ④ 写入 ARP 缓存
-    A->>B: ⑤ ICMP Echo Request
-    B->>A: ⑥ ICMP Echo Reply
+    A-&gt;&gt;B: ⑤ ICMP Echo Request
+    B-&gt;&gt;A: ⑥ ICMP Echo Reply
 </div>
 <h3>RFC 826 定义的缓存更新规则（重要！）</h3>
 <p>这是 ARP 协议的一个<strong>非常关键的细节</strong>，很多资料写成了“无条件学习”，与 RFC 826 给出的接收算法不符：</p>
@@ -678,18 +670,18 @@ ARP Announcement / 传统 Gratuitous ARP (宣告已使用该地址):
 <h4>工作原理</h4>
 <div class="mermaid">
 flowchart LR
-    subgraph S1["子网 1 (/24)"]
-        A["Host A<br/>172.16.1.10/16<br/>aa:aa:aa:aa:aa:aa"]
+    subgraph S1[&quot;子网 1 (/24)&quot;]
+        A[&quot;Host A&lt;br/&gt;172.16.1.10/16&lt;br/&gt;aa:aa:aa:aa:aa:aa&quot;]
     end
-    subgraph S2["子网 2 (/24)"]
-        B["Host B<br/>172.16.2.20/16<br/>bb:bb:bb:bb:bb:bb"]
+    subgraph S2[&quot;子网 2 (/24)&quot;]
+        B[&quot;Host B&lt;br/&gt;172.16.2.20/16&lt;br/&gt;bb:bb:bb:bb:bb:bb&quot;]
     end
-    R["Router / Gateway<br/>eth0:172.16.1.1/24<br/>eth1:172.16.2.1/24<br/>66:66:66:66:66:66"]
-    A -->|"① ARP Request（广播）谁是 172.16.2.20?"| R
-    R -->|"③ ARP Reply（单播）172.16.2.20 is-at 66:66:66:66:66:66（路由器自身 MAC）"| A
-    A ==>|"④ 数据帧 目标 MAC = 路由器"| R
-    R ==>|"⑤ 转发到 B"| B
-    Rn["② Router 查路由表：目标在 eth1（另一子网），不在本广播域"]
+    R[&quot;Router / Gateway&lt;br/&gt;eth0:172.16.1.1/24&lt;br/&gt;eth1:172.16.2.1/24&lt;br/&gt;66:66:66:66:66:66&quot;]
+    A --&gt;|&quot;① ARP Request（广播）谁是 172.16.2.20?&quot;| R
+    R --&gt;|&quot;③ ARP Reply（单播）172.16.2.20 is-at 66:66:66:66:66:66（路由器自身 MAC）&quot;| A
+    A ==&gt;|&quot;④ 数据帧 目标 MAC = 路由器&quot;| R
+    R ==&gt;|&quot;⑤ 转发到 B&quot;| B
+    Rn[&quot;② Router 查路由表：目标在 eth1（另一子网），不在本广播域&quot;]
     R -.- Rn
 </div>
 <h4>配置方法（Linux/Cisco）</h4>
@@ -818,21 +810,21 @@ sudo tcpdump -i eth0 -nn -e \
 <p>在高可用架构中，多个节点共享同一个 <strong>虚拟 IP（VIP）</strong>，当主节点故障时 VIP 自动漂移到备用节点：</p>
 <div class="mermaid">
 flowchart TB
-    subgraph N["正常状态"]
+    subgraph N[&quot;正常状态&quot;]
         direction LR
-        M["Master（活跃）<br/>VIP 10.0.0.1<br/>vMAC 00:00:5E:00:01:2a"]
-        BK["Backup（Standby）"]
-        NET["网络（交换机）"]
-        M -->|"Gratuitous ARP Announcement<br/>VIP 10.0.0.1 is-at vMAC"| NET
+        M[&quot;Master（活跃）&lt;br/&gt;VIP 10.0.0.1&lt;br/&gt;vMAC 00:00:5E:00:01:2a&quot;]
+        BK[&quot;Backup（Standby）&quot;]
+        NET[&quot;网络（交换机）&quot;]
+        M --&gt;|&quot;Gratuitous ARP Announcement&lt;br/&gt;VIP 10.0.0.1 is-at vMAC&quot;| NET
     end
-    subgraph F["故障转移后"]
+    subgraph F[&quot;故障转移后&quot;]
         direction LR
-        MD["Master（宕机!）"]
-        NM["Backup → 新 Master"]
-        NET2["网络（交换机）"]
-        NM -->|"Gratuitous ARP（同一 vMAC）<br/>刷新交换机 / 主机转发表与 ARP"| NET2
+        MD[&quot;Master（宕机!）&quot;]
+        NM[&quot;Backup → 新 Master&quot;]
+        NET2[&quot;网络（交换机）&quot;]
+        NM --&gt;|&quot;Gratuitous ARP（同一 vMAC）&lt;br/&gt;刷新交换机 / 主机转发表与 ARP&quot;| NET2
     end
-    N -->|"主节点故障，VIP 漂移到 Backup"| F
+    N --&gt;|&quot;主节点故障，VIP 漂移到 Backup&quot;| F
 </div>
 <h3>场景 5：网络设备发现与连通性检测</h3>
 <pre><code class="language-text">用途示例:
@@ -862,18 +854,18 @@ flowchart TB
 <h4>攻击流程详解（中间人攻击 MITM）</h4>
 <div class="mermaid">
 flowchart TB
-    A["Victim A<br/>192.168.1.100<br/>aa:aa:aa:aa:aa:aa"]
-    B["Victim B<br/>192.168.1.200<br/>bb:bb:bb:bb:bb:bb"]
-    ATK["Attacker<br/>cc:cc:cc:cc:cc:cc"]
-    SW["共享交换机 / Wi-Fi AP（同一 LAN）"]
+    A[&quot;Victim A&lt;br/&gt;192.168.1.100&lt;br/&gt;aa:aa:aa:aa:aa:aa&quot;]
+    B[&quot;Victim B&lt;br/&gt;192.168.1.200&lt;br/&gt;bb:bb:bb:bb:bb:bb&quot;]
+    ATK[&quot;Attacker&lt;br/&gt;cc:cc:cc:cc:cc:cc&quot;]
+    SW[&quot;共享交换机 / Wi-Fi AP（同一 LAN）&quot;]
     A --- SW
     B --- SW
     ATK --- SW
-    ATK -.->|"伪造 ARP Reply<br/>192.168.1.200 → cc:cc:cc:cc:cc:cc"| A
-    ATK -.->|"伪造 ARP Reply<br/>192.168.1.100 → cc:cc:cc:cc:cc:cc"| B
-    A ==>|"发往“B”的流量先到攻击者"| ATK
-    ATK ==>|"窃听 / 篡改后转发到 B"| B
-    SW -.->|"结果：A、B 均将对方 IP 映射到攻击者 MAC"| RES["流量被中间人劫持（MITM）"]
+    ATK -.-&gt;|&quot;伪造 ARP Reply&lt;br/&gt;192.168.1.200 → cc:cc:cc:cc:cc:cc&quot;| A
+    ATK -.-&gt;|&quot;伪造 ARP Reply&lt;br/&gt;192.168.1.100 → cc:cc:cc:cc:cc:cc&quot;| B
+    A ==&gt;|&quot;发往“B”的流量先到攻击者&quot;| ATK
+    ATK ==&gt;|&quot;窃听 / 篡改后转发到 B&quot;| B
+    SW -.-&gt;|&quot;结果：A、B 均将对方 IP 映射到攻击者 MAC&quot;| RES[&quot;流量被中间人劫持（MITM）&quot;]
     classDef red fill:#fee2e2,stroke:#dc2626,stroke-width:2px;
     class ATK red;
 </div>
@@ -1011,21 +1003,21 @@ done
 <h5>DAI 的工作原理</h5>
 <div class="mermaid">
 flowchart LR
-    T["Trusted Port（上行）<br/>连其他交换机 / 路由<br/>不检查 ARP"]
-    DB[("DHCP Snooping<br/>绑定数据库")]
-    U["Untrusted Port（下行）<br/>连 PC / 打印机 / AP<br/>检查每个 ARP 包"]
-    T --> DB
-    DB --> U
-    subgraph CHECK["收到 ARP 包（Untrusted 口）"]
+    T[&quot;Trusted Port（上行）&lt;br/&gt;连其他交换机 / 路由&lt;br/&gt;不检查 ARP&quot;]
+    DB[(&quot;DHCP Snooping&lt;br/&gt;绑定数据库&quot;)]
+    U[&quot;Untrusted Port（下行）&lt;br/&gt;连 PC / 打印机 / AP&lt;br/&gt;检查每个 ARP 包&quot;]
+    T --&gt; DB
+    DB --&gt; U
+    subgraph CHECK[&quot;收到 ARP 包（Untrusted 口）&quot;]
         direction TB
-        E["提取 sender IP + sender MAC"]
-        Q["查询绑定数据库"]
-        M{"记录存在<br/>且匹配?"}
-        E --> Q --> M
-        M -->|"是"| OK["允许转发 (Forward)"]
-        M -->|"否"| DROP["丢弃 + 记日志 (Drop)"]
+        E[&quot;提取 sender IP + sender MAC&quot;]
+        Q[&quot;查询绑定数据库&quot;]
+        M{&quot;记录存在&lt;br/&gt;且匹配?&quot;}
+        E --&gt; Q --&gt; M
+        M --&gt;|&quot;是&quot;| OK[&quot;允许转发 (Forward)&quot;]
+        M --&gt;|&quot;否&quot;| DROP[&quot;丢弃 + 记日志 (Drop)&quot;]
     end
-    U --> CHECK
+    U --&gt; CHECK
 </div>
 <h5>Trusted / Untrusted 端口</h5>
 <table>
@@ -1136,14 +1128,14 @@ Vlan   Dest MAC Failures   IP Validation Failures
 <p>DAI 通常与 DHCP Snooping <strong>配合使用</strong>形成完整的二层防护体系：</p>
 <div class="mermaid">
 flowchart TB
-    DHCP["DHCP Snooping<br/>监听 DHCP 交互，记录合法 IP-MAC-Port-VLAN"]
-    DB[("绑定数据库")]
-    DAI["Dynamic ARP Inspection<br/>每个 ARP 包与绑定数据库 / ARP ACL 比对"]
-    PS["端口安全 (Port Security)<br/>限制每端口学习的 MAC 数量"]
-    DHCP --> DB
-    DHCP -->|"过滤非法的 DHCP Server（Untrusted 口进入的 Offer）"| DB
-    DB --> DAI
-    DAI -->|"合法 → 转发 / 非法 → 丢弃"| PS
+    DHCP[&quot;DHCP Snooping&lt;br/&gt;监听 DHCP 交互，记录合法 IP-MAC-Port-VLAN&quot;]
+    DB[(&quot;绑定数据库&quot;)]
+    DAI[&quot;Dynamic ARP Inspection&lt;br/&gt;每个 ARP 包与绑定数据库 / ARP ACL 比对&quot;]
+    PS[&quot;端口安全 (Port Security)&lt;br/&gt;限制每端口学习的 MAC 数量&quot;]
+    DHCP --&gt; DB
+    DHCP --&gt;|&quot;过滤非法的 DHCP Server（Untrusted 口进入的 Offer）&quot;| DB
+    DB --&gt; DAI
+    DAI --&gt;|&quot;合法 → 转发 / 非法 → 丢弃&quot;| PS
 </div>
 <h4>方案 4：802.1X 网络准入控制</h4>
 <p>对于更高安全要求的场景，可以使用 802.1X 进行<strong>基于身份的网络准入控制</strong>：</p>
@@ -1152,13 +1144,13 @@ sequenceDiagram
     participant C as Client (Supplicant)
     participant S as Switch (Authenticator)
     participant R as RADIUS Server
-    C->>S: EAPOL-Start
-    S->>C: EAP-Request/Identity
-    C->>S: EAP-Response（用户凭证）
-    S->>R: RADIUS Access-Request
-    R->>S: RADIUS Access-Accept
-    S->>C: EAP-Success（开放端口，加入 VLAN）
-    Note over C,S: 802.1X 仅做身份准入；<br/>已认证但失陷的终端仍需 DAI 约束
+    C-&gt;&gt;S: EAPOL-Start
+    S-&gt;&gt;C: EAP-Request/Identity
+    C-&gt;&gt;S: EAP-Response（用户凭证）
+    S-&gt;&gt;R: RADIUS Access-Request
+    R-&gt;&gt;S: RADIUS Access-Accept
+    S-&gt;&gt;C: EAP-Success（开放端口，加入 VLAN）
+    Note over C,S: 802.1X 仅做身份准入；&lt;br/&gt;已认证但失陷的终端仍需 DAI 约束
 </div>
 <h3>防御方案对比总结</h3>
 <table>
@@ -1237,15 +1229,15 @@ sequenceDiagram
 </code></pre>
 <div class="mermaid">
 flowchart LR
-    subgraph IPV4["IPv4 链路"]
-        ARP["ARP (EtherType 0x0806)<br/>仅做地址解析"]
-        ICMPRD["ICMP Router Discovery"]
-        ICMPRed["ICMP Redirect"]
+    subgraph IPV4[&quot;IPv4 链路&quot;]
+        ARP[&quot;ARP (EtherType 0x0806)&lt;br/&gt;仅做地址解析&quot;]
+        ICMPRD[&quot;ICMP Router Discovery&quot;]
+        ICMPRed[&quot;ICMP Redirect&quot;]
     end
-    subgraph IPV6["IPv6 链路"]
-        NDP["NDP (ICMPv6, Next Header 58)<br/>RFC 4861 一体化"]
+    subgraph IPV6[&quot;IPv6 链路&quot;]
+        NDP[&quot;NDP (ICMPv6, Next Header 58)&lt;br/&gt;RFC 4861 一体化&quot;]
     end
-    IPV4 -.->|"被取代 / 整合"| IPV6
+    IPV4 -.-&gt;|&quot;被取代 / 整合&quot;| IPV6
 </div>
 <p>⚠️ <strong>关键事实</strong>：在 IPv4/IPv6 双栈网络中，ARP 与 NDP <strong>并行工作、互不干扰</strong>——访问 IPv4 目标走 ARP，访问 IPv6 目标走 NDP。部署 IPv6 即意味着启用 NDP，没有「切换」步骤。</p>
 <h3>NDP 的定位与 RFC 体系</h3>
@@ -1328,26 +1320,26 @@ flowchart LR
 </table>
 <div class="mermaid">
 flowchart TB
-    H["主机 (Host)"]
-    R["路由器 (Router)"]
-    N["邻居 (Neighbor)"]
-    H -->|"RS (133) 找路由器"| R
-    R -->|"RA (134) 前缀/路由/MTU"| H
-    H -->|"NS (135) 解析 MAC / DAD"| N
-    N -->|"NA (136) 返回 MAC"| H
-    R -.->|"Redirect (137) 更优下一跳"| H
+    H[&quot;主机 (Host)&quot;]
+    R[&quot;路由器 (Router)&quot;]
+    N[&quot;邻居 (Neighbor)&quot;]
+    H --&gt;|&quot;RS (133) 找路由器&quot;| R
+    R --&gt;|&quot;RA (134) 前缀/路由/MTU&quot;| H
+    H --&gt;|&quot;NS (135) 解析 MAC / DAD&quot;| N
+    N --&gt;|&quot;NA (136) 返回 MAC&quot;| H
+    R -.-&gt;|&quot;Redirect (137) 更优下一跳&quot;| H
 </div>
 <h3>报文格式详解（NS 与 NA）</h3>
 <h4>A. Neighbor Solicitation（NS，Type 135）</h4>
 <div class="mermaid">
 flowchart LR
-    T["Type = 135 (1字节)"]
-    C["Code = 0 (1字节)"]
-    CK["Checksum (2字节)"]
-    RSV["Reserved (4字节)"]
-    TA["Target Address (16字节, 目标 IPv6)"]
-    OPT["Options: SLLA (源链路层地址)"]
-    T --> C --> CK --> RSV --> TA --> OPT
+    T[&quot;Type = 135 (1字节)&quot;]
+    C[&quot;Code = 0 (1字节)&quot;]
+    CK[&quot;Checksum (2字节)&quot;]
+    RSV[&quot;Reserved (4字节)&quot;]
+    TA[&quot;Target Address (16字节, 目标 IPv6)&quot;]
+    OPT[&quot;Options: SLLA (源链路层地址)&quot;]
+    T --&gt; C --&gt; CK --&gt; RSV --&gt; TA --&gt; OPT
 </div>
 <table>
 <thead>
@@ -1394,13 +1386,13 @@ flowchart LR
 <h4>B. Neighbor Advertisement（NA，Type 136）</h4>
 <div class="mermaid">
 flowchart LR
-    T["Type = 136 (1字节)"]
-    C["Code = 0 (1字节)"]
-    CK["Checksum (2字节)"]
-    F["R/S/O (3 bits) + Reserved (29 bits)"]
-    TA["Target Address (16字节)"]
-    OPT["Options: TLLA (目标链路层地址)"]
-    T --> C --> CK --> F --> TA --> OPT
+    T[&quot;Type = 136 (1字节)&quot;]
+    C[&quot;Code = 0 (1字节)&quot;]
+    CK[&quot;Checksum (2字节)&quot;]
+    F[&quot;R/S/O (3 bits) + Reserved (29 bits)&quot;]
+    TA[&quot;Target Address (16字节)&quot;]
+    OPT[&quot;Options: TLLA (目标链路层地址)&quot;]
+    T --&gt; C --&gt; CK --&gt; F --&gt; TA --&gt; OPT
 </div>
 <p>NA 多了 <strong>3 个标志位</strong>，这是 ARP Reply 完全没有的能力：</p>
 <table>
@@ -1468,11 +1460,11 @@ sequenceDiagram
     participant A as Host A (fe80::a)
     participant B as Host B (fe80::1)
     Note over A: 检查邻居缓存未命中
-    A->>B: ① NS (组播 → ff02::1:ff00:1)<br/>Target=fe80::1, 选项带 A 的 MAC
-    Note over B: 匹配被请求节点组播 → 仅 B 收包<br/>校验 Target 非组播, Hop Limit=255
-    B->>A: ② NA (单播回 A)<br/>Target=fe80::1, 选项带 B 的 MAC, S=1
+    A-&gt;&gt;B: ① NS (组播 → ff02::1:ff00:1)&lt;br/&gt;Target=fe80::1, 选项带 A 的 MAC
+    Note over B: 匹配被请求节点组播 → 仅 B 收包&lt;br/&gt;校验 Target 非组播, Hop Limit=255
+    B-&gt;&gt;A: ② NA (单播回 A)&lt;br/&gt;Target=fe80::1, 选项带 B 的 MAC, S=1
     Note over A: ③ 写入邻居缓存, 用学到的 MAC 封装帧
-    A->>B: ④ 正常 IPv6 数据通信
+    A-&gt;&gt;B: ④ 正常 IPv6 数据通信
 </div>
 <p>被请求节点组播地址（Solicited-Node Multicast）是关键优化：</p>
 <pre><code class="language-text">构造规则:
@@ -1749,21 +1741,21 @@ ndp -an           # 数字形式
 </table>
 <div class="mermaid">
 flowchart TB
-    subgraph A["ARP / IPv4"]
+    subgraph A[&quot;ARP / IPv4&quot;]
         direction LR
-        A1["地址解析 (广播)"]
-        A2["无路由器发现"]
-        A3["无 DAD/NUD"]
-        A4["无安全基线"]
+        A1[&quot;地址解析 (广播)&quot;]
+        A2[&quot;无路由器发现&quot;]
+        A3[&quot;无 DAD/NUD&quot;]
+        A4[&quot;无安全基线&quot;]
     end
-    subgraph N["NDP / IPv6"]
+    subgraph N[&quot;NDP / IPv6&quot;]
         direction LR
-        N1["地址解析 (组播)"]
-        N2["路由器/前缀/MTU 发现"]
-        N3["SLAAC + DAD + NUD"]
-        N4["Hop Limit=255 / SEND"]
+        N1[&quot;地址解析 (组播)&quot;]
+        N2[&quot;路由器/前缀/MTU 发现&quot;]
+        N3[&quot;SLAAC + DAD + NUD&quot;]
+        N4[&quot;Hop Limit=255 / SEND&quot;]
     end
-    A -->|"功能被整合 + 增强"| N
+    A --&gt;|&quot;功能被整合 + 增强&quot;| N
 </div>
 <p>🤝 <strong>总结差异</strong>：ARP 是 IPv4 时代一个「只管把 IP 翻译成 MAC」的轻量补丁；NDP 是 IPv6 链路层的「智能中枢」——它把地址解析、路由器/前缀发现、参数发现、地址自动配置、冲突检测、可达性检测、重定向<strong>整合进一个 ICMPv6 协议族</strong>，并用组播取代广播、用可选项取代固定字段、用强制 DAD/NUD 提升健壮性、用 Hop Limit=255 与 SEND 留出安全纵深。</p>
 <hr />

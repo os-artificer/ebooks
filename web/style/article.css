@@ -7,9 +7,15 @@
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 15px;
   line-height: 1.75;
-  padding: 24px;
+  padding: 1.5rem 1.75rem 2.5rem;
   overflow: auto;
   color: #1f2937;
+}
+
+@media (max-width: 767px) {
+  #article {
+    padding: 1rem 1rem 2rem;
+  }
 }
 
 /* ===== 排版：标题字号（最大不超过 24px）===== */
@@ -149,6 +155,9 @@
   border-collapse: collapse;
   margin: 1em 0;
   font-size: 0.92rem;   /* 表格文字稍小，提升密度 */
+  max-width: 100%;
+  overflow-x: auto;
+  display: block;
 }
 
 #article th,
@@ -225,8 +234,9 @@
   vertical-align: middle;
 }
 
+/* 阅读栏约 880–1000px，与壳层右轨并存时仍可容纳代码横向滚动 */
 #article article {
-  max-width: 1000px;
+  max-width: min(1000px, 100%);
   margin: 0 auto;
 }
 

@@ -24,16 +24,8 @@
       .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
     </style>
     <script type="module">
-      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
-      document.querySelectorAll('pre > code.language-mermaid').forEach((el) => {
-        const pre = el.parentElement;
-        const div = document.createElement('div');
-        div.className = 'mermaid';
-        div.textContent = el.textContent;
-        pre.replaceWith(div);
-      });
-      mermaid.run();
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
     </script>
 </head>
 <body>
@@ -53,12 +45,12 @@
 <p>IP（Internet Protocol，网际协议）是 TCP/IP 协议族中 <strong>网络层（第 3 层）</strong> 的核心，负责把数据报从源主机 <strong>尽力而为（best-effort）</strong> 地转发到目的主机，不保证可靠、不保证顺序、不保证不重复。</p>
 <div class="mermaid">
 graph TB
-    App["应用层 (HTTP / DNS / SSH)"]
-    Trans["传输层 (TCP / UDP) · 端口 Port"]
-    Net["网络层 (IP / ICMP / IGMP) · IP 地址"]
-    Link["数据链路层 (Ethernet / Wi-Fi / PPP) · MAC 地址"]
-    Phy["物理层 (光纤 / 双绞线 / 无线电波)"]
-    App --> Trans --> Net --> Link --> Phy
+    App[&quot;应用层 (HTTP / DNS / SSH)&quot;]
+    Trans[&quot;传输层 (TCP / UDP) · 端口 Port&quot;]
+    Net[&quot;网络层 (IP / ICMP / IGMP) · IP 地址&quot;]
+    Link[&quot;数据链路层 (Ethernet / Wi-Fi / PPP) · MAC 地址&quot;]
+    Phy[&quot;物理层 (光纤 / 双绞线 / 无线电波)&quot;]
+    App --&gt; Trans --&gt; Net --&gt; Link --&gt; Phy
 </div>
 <p>IP 的核心职责:</p>
 <ol>
@@ -77,13 +69,13 @@ graph TB
 <p>IPv4 头部<strong>最小 20 字节</strong>（无选项时），长度可变（含选项最长 60 字节）：</p>
 <div class="mermaid">
 graph TB
-    R1["版本(4bit) · IHL(4bit) · DSCP(6bit) · ECN(2bit) · 总长度(16bit)"]
-    R2["标识(16bit) · 标志(3bit) · 片偏移(13bit)"]
-    R3["TTL(8bit) · 协议(8bit) · 首部校验和(16bit)"]
-    R4["源 IP 地址 (32bit)"]
-    R5["目的 IP 地址 (32bit)"]
-    R6["选项 (可选, 0~40 字节)"]
-    R1 --> R2 --> R3 --> R4 --> R5 --> R6
+    R1[&quot;版本(4bit) · IHL(4bit) · DSCP(6bit) · ECN(2bit) · 总长度(16bit)&quot;]
+    R2[&quot;标识(16bit) · 标志(3bit) · 片偏移(13bit)&quot;]
+    R3[&quot;TTL(8bit) · 协议(8bit) · 首部校验和(16bit)&quot;]
+    R4[&quot;源 IP 地址 (32bit)&quot;]
+    R5[&quot;目的 IP 地址 (32bit)&quot;]
+    R6[&quot;选项 (可选, 0~40 字节)&quot;]
+    R1 --&gt; R2 --&gt; R3 --&gt; R4 --&gt; R5 --&gt; R6
 </div>
 <h4>关键字段说明</h4>
 <table>
@@ -154,11 +146,11 @@ graph TB
 <p>IPv6 做了一个重要简化：<strong>固定 40 字节基本首部 + 可选的扩展首部</strong>，把分片、选项等"非常规"功能移到扩展首部，使路由器处理更快。</p>
 <div class="mermaid">
 graph TB
-    R1["版本(4bit) · 流量类别 TC(8bit) · 流标签 Flow Label(20bit)"]
-    R2["有效载荷长度 Payload Length(16bit) · 下一个首部 Next Header(8bit) · 跳数限制 Hop Limit(8bit)"]
-    R3["源地址 Source Address (128bit)"]
-    R4["目的地址 Destination Address (128bit)"]
-    R1 --> R2 --> R3 --> R4
+    R1[&quot;版本(4bit) · 流量类别 TC(8bit) · 流标签 Flow Label(20bit)&quot;]
+    R2[&quot;有效载荷长度 Payload Length(16bit) · 下一个首部 Next Header(8bit) · 跳数限制 Hop Limit(8bit)&quot;]
+    R3[&quot;源地址 Source Address (128bit)&quot;]
+    R4[&quot;目的地址 Destination Address (128bit)&quot;]
+    R1 --&gt; R2 --&gt; R3 --&gt; R4
 </div>
 <p>注意：</p>
 <ul>
@@ -256,19 +248,19 @@ graph TB
 <div class="mermaid">
 sequenceDiagram
     autonumber
-    participant A as 主机 A<br/>(192.168.1.100)
-    participant G as 默认网关<br/>(192.168.1.1)
+    participant A as 主机 A&lt;br/&gt;(192.168.1.100)
+    participant G as 默认网关&lt;br/&gt;(192.168.1.1)
     participant R as 中间路由器 R1
-    participant B as 服务器 B<br/>(203.0.113.7)
-    A->>A: ① 应用层产出数据, 交给传输层封装段(端口)
-    A->>A: ② 查路由表: 目的不在本链路 → 走默认网关
-    A->>G: ③ ARP 广播 Request 解析网关 MAC
-    G-->>A: ARP 单播 Reply 返回网关 MAC
-    A->>G: ④ 封装 IPv4 数据报(源IP=A, 目的IP=B), 以太网帧目的MAC=网关
-    Note over G: ⑤ 解封装, 查路由表定下一跳<br/>TTL-1, 重算校验和
-    G->>R: 发往下一跳
-    R->>B: ⑥ 逐跳转发直到 B, 解封装交付应用
-    Note over A,B: IP 地址 A→B 全程不变<br/>每跳的源/目的 MAC 被重新封装
+    participant B as 服务器 B&lt;br/&gt;(203.0.113.7)
+    A-&gt;&gt;A: ① 应用层产出数据, 交给传输层封装段(端口)
+    A-&gt;&gt;A: ② 查路由表: 目的不在本链路 → 走默认网关
+    A-&gt;&gt;G: ③ ARP 广播 Request 解析网关 MAC
+    G--&gt;&gt;A: ARP 单播 Reply 返回网关 MAC
+    A-&gt;&gt;G: ④ 封装 IPv4 数据报(源IP=A, 目的IP=B), 以太网帧目的MAC=网关
+    Note over G: ⑤ 解封装, 查路由表定下一跳&lt;br/&gt;TTL-1, 重算校验和
+    G-&gt;&gt;R: 发往下一跳
+    R-&gt;&gt;B: ⑥ 逐跳转发直到 B, 解封装交付应用
+    Note over A,B: IP 地址 A→B 全程不变&lt;br/&gt;每跳的源/目的 MAC 被重新封装
 </div>
 <p><strong>关键点</strong>：</p>
 <ul>
@@ -282,15 +274,15 @@ sequenceDiagram
 <div class="mermaid">
 sequenceDiagram
     autonumber
-    participant A as 主机 A<br/>(2001:db8::a)
+    participant A as 主机 A&lt;br/&gt;(2001:db8::a)
     participant SW as 二层交换机
-    participant B as 主机 B<br/>(2001:db8::b)
-    A->>A: ① 想发给 B, 但不知其 MAC
-    A->>SW: ② 发送 NS (Neighbor Solicitation)
-    Note right of A: 目标 = 被请求节点多播<br/>ff02::1:ff00:b
-    SW->>B: ③ 仅投递给订阅该多播组的端口
-    B-->>A: ④ 回 NA (Neighbor Advertisement), 单播携带自身 MAC
-    A->>A: ⑤ 缓存 B 的 IP↔MAC, 封装 IPv6 发送
+    participant B as 主机 B&lt;br/&gt;(2001:db8::b)
+    A-&gt;&gt;A: ① 想发给 B, 但不知其 MAC
+    A-&gt;&gt;SW: ② 发送 NS (Neighbor Solicitation)
+    Note right of A: 目标 = 被请求节点多播&lt;br/&gt;ff02::1:ff00:b
+    SW-&gt;&gt;B: ③ 仅投递给订阅该多播组的端口
+    B--&gt;&gt;A: ④ 回 NA (Neighbor Advertisement), 单播携带自身 MAC
+    A-&gt;&gt;A: ⑤ 缓存 B 的 IP↔MAC, 封装 IPv6 发送
 </div>
 <p>NDP 的 5 种 ICMPv6 报文（RFC 4861）：</p>
 <ul>
@@ -310,11 +302,11 @@ sequenceDiagram
 <p>早期 Internet 规模很小，RFC 790（1981）和 RFC 791 采用了<strong>分类编址</strong>：按地址首位固定划分 A/B/C/D/E 五类，每类带<strong>默认子网掩码</strong>。</p>
 <div class="mermaid">
 graph LR
-    A["0xxxxxxx<br/>A 类 /8<br/>128 网 × 1677 万主机"]
-    B["10xxxxxx<br/>B 类 /16<br/>16384 网 × 65534 主机"]
-    C["110xxxxx<br/>C 类 /24<br/>209 万网 × 254 主机"]
-    D["1110xxxx<br/>D 类 组播"]
-    E["11110xxx<br/>E 类 保留"]
+    A[&quot;0xxxxxxx&lt;br/&gt;A 类 /8&lt;br/&gt;128 网 × 1677 万主机&quot;]
+    B[&quot;10xxxxxx&lt;br/&gt;B 类 /16&lt;br/&gt;16384 网 × 65534 主机&quot;]
+    C[&quot;110xxxxx&lt;br/&gt;C 类 /24&lt;br/&gt;209 万网 × 254 主机&quot;]
+    D[&quot;1110xxxx&lt;br/&gt;D 类 组播&quot;]
+    E[&quot;11110xxx&lt;br/&gt;E 类 保留&quot;]
 </div>
 <p>设计初衷：A 类给超大型机构（如大学、军队），B 类给中大型组织，C 类给小型网络。</p>
 <h3>问题暴露：地址浪费与路由表爆炸</h3>
@@ -346,15 +338,15 @@ graph LR
 <p><strong>路由聚合示例</strong>：连续的 4 个 <code>/24</code> 聚合成一条 <code>/22</code> 摘要路由，核心路由器用 1 条路由代替 4 条。</p>
 <div class="mermaid">
 graph TB
-    N1["192.168.0.0/24"]
-    N2["192.168.1.0/24"]
-    N3["192.168.2.0/24"]
-    N4["192.168.3.0/24"]
-    R["核心路由器: 1 条 192.168.0.0/22 代替 4 条"]
-    N1 --> R
-    N2 --> R
-    N3 --> R
-    N4 --> R
+    N1[&quot;192.168.0.0/24&quot;]
+    N2[&quot;192.168.1.0/24&quot;]
+    N3[&quot;192.168.2.0/24&quot;]
+    N4[&quot;192.168.3.0/24&quot;]
+    R[&quot;核心路由器: 1 条 192.168.0.0/22 代替 4 条&quot;]
+    N1 --&gt; R
+    N2 --&gt; R
+    N3 --&gt; R
+    N4 --&gt; R
 </div>
 <h3>第三阶段：子网划分（Subnetting）与掩码计算</h3>
 <p>在一个组织拿到一个 CIDR 块后，<strong>子网划分</strong>是把这块地址再切分给不同部门/楼层的常用手段。</p>
@@ -447,13 +439,13 @@ graph TB
 <p><strong>NAT 工作示意</strong>（家庭路由器，用端口区分不同内网主机，即 NAPT）：</p>
 <div class="mermaid">
 graph LR
-    I1["内网 192.168.1.10:5566"]
-    I2["内网 192.168.1.11:7788"]
-    N["NAT 路由器"]
-    P["公网 203.0.113.7:5566 / :7789"]
-    I1 --> N
-    I2 --> N
-    N --> P
+    I1[&quot;内网 192.168.1.10:5566&quot;]
+    I2[&quot;内网 192.168.1.11:7788&quot;]
+    N[&quot;NAT 路由器&quot;]
+    P[&quot;公网 203.0.113.7:5566 / :7789&quot;]
+    I1 --&gt; N
+    I2 --&gt; N
+    N --&gt; P
 </div>
 <blockquote>
 <p>⚠️ NAT 是"权宜之计"，它破坏了端到端透明性（P2P、入站服务需端口映射），也增加了连接跟踪开销。它把 IPv4 的寿命延长了二十年，但无法从根本上解决地址空间不足——这就是为什么 IPv6 才是终局方案。</p>
@@ -474,10 +466,10 @@ sa.sin_addr.s_addr = INADDR_ANY;   // 只监听 IPv4
 <p>正确做法是遵循下面三条：</p>
 <div class="mermaid">
 graph TB
-    S["① 服务端: AF_INET6 + 关闭 IPV6_V6ONLY<br/>单 socket 同时接纳 IPv4/IPv6 (::ffff: 映射)"]
-    C["② 客户端: getaddrinfo(AF_UNSPEC)<br/>同时拿 A/AAAA, 按序尝试"]
-    T["③ 地址存储: sockaddr_storage<br/>兼容 v4/v6, 防截断"]
-    D["④ 地址展示: inet_ntop / inet_pton<br/>两种地址统一文本化"]
+    S[&quot;① 服务端: AF_INET6 + 关闭 IPV6_V6ONLY&lt;br/&gt;单 socket 同时接纳 IPv4/IPv6 (::ffff: 映射)&quot;]
+    C[&quot;② 客户端: getaddrinfo(AF_UNSPEC)&lt;br/&gt;同时拿 A/AAAA, 按序尝试&quot;]
+    T[&quot;③ 地址存储: sockaddr_storage&lt;br/&gt;兼容 v4/v6, 防截断&quot;]
+    D[&quot;④ 地址展示: inet_ntop / inet_pton&lt;br/&gt;两种地址统一文本化&quot;]
 </div>
 <h3>服务端：一个套接字监听双栈</h3>
 <p>在 Linux/macOS/BSD 上，创建 <code>AF_INET6</code> 套接字并显式设置 <code>IPV6_V6ONLY = 0</code>（注意：<strong>BSD/macOS 内核默认该项为 1，即 v6-only；Linux 默认则为 0</strong>，但显式置 0 可保证跨平台一致），再 <code>bind</code> 到 <code>::</code>（IPv6 通配地址），即可同时接受 IPv4 与 IPv6 连接。</p>
@@ -586,10 +578,10 @@ sequenceDiagram
     participant C as 客户端
     participant V6 as 目标 IPv6 地址 #1
     participant V4 as 目标 IPv4 地址 #1
-    C->>V6: t=0ms 发起连接
-    C->>V4: t=50ms 交错发起连接 (不等 v6 超时)
-    V4-->>C: t=80ms 连接成功
-    Note over C: 取消其余在途尝试, 采用 IPv4 #1<br/>(下次优先把 IPv4 #1 排前面, 预热)
+    C-&gt;&gt;V6: t=0ms 发起连接
+    C-&gt;&gt;V4: t=50ms 交错发起连接 (不等 v6 超时)
+    V4--&gt;&gt;C: t=80ms 连接成功
+    Note over C: 取消其余在途尝试, 采用 IPv4 #1&lt;br/&gt;(下次优先把 IPv4 #1 排前面, 预热)
 </div>
 <h3>Python 示例（更贴近应用开发）</h3>
 <p>Python 的 <code>socket</code> 同样遵循上述原则：服务端用 <code>AF_INET6</code> + <code>IPV6_V6ONLY=0</code>，客户端用 <code>getaddrinfo(..., AF_UNSPEC)</code>。</p>

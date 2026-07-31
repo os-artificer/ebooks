@@ -11,11 +11,17 @@
       a{color:#2563eb;text-decoration:none;}
       a:hover{text-decoration:underline;}
       img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
       table{border-collapse:collapse;}
       th,td{border:1px solid #d1d5db;padding:6px 10px;}
       th{background:#f9fafb;}
       article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
       article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
     </style>
 </head>
 <body>
@@ -405,15 +411,16 @@ while (((unsigned long) (size = chunksize (victim)) &lt; (unsigned long) nb))
 <p>不够大（或 mmap 失败）就扩堆。</p>
 <ul>
 <li>
-<p><strong>主 arena</strong>：<code>MORECORE(size)</code>，在 Linux 上就是 <code>sbrk</code>。核心代码：
-    <code>c
-    if ((ssize_t) size &gt; 0) {
-        brk = (char *) MORECORE ((long) size);
-        if (brk != (char *) MORECORE_FAILURE)
-            madvise_thp (brk, size);
-        LIBC_PROBE (memory_sbrk_more, 2, brk, size);
-    }</code>
-    扩堆成功后，把新得到的地址段并入 top chunk。</p>
+<p><strong>主 arena</strong>：<code>MORECORE(size)</code>，在 Linux 上就是 <code>sbrk</code>。
+  核心代码：</p>
+<p><code>c
+if ((ssize_t) size &gt; 0) {
+    brk = (char *) MORECORE ((long) size);
+    if (brk != (char *) MORECORE_FAILURE)
+        madvise_thp (brk, size);
+    LIBC_PROBE (memory_sbrk_more, 2, brk, size);
+}</code></p>
+<p>扩堆成功后，把新得到的地址段并入 top chunk。</p>
 </li>
 <li>
 <p><strong>非主 arena</strong>：先 <code>grow_heap</code> 扩当前 heap（本质是 <code>mprotect</code> 把之前预留的地址范围变可读写），失败再 <code>new_heap</code> 申请一整块对齐的 <code>HEAP_MAX_SIZE</code> 区域。</p>

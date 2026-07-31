@@ -29,6 +29,19 @@ MERMAID_SCRIPT = (
 )
 
 
+# 章节式标号：一、 / 零、 / 1. / 1、 等（不含 #1：这类专题编号）
+_ENUM_TITLE_PREFIX = re.compile(
+    r"^(?:[零一二三四五六七八九十百千两〇]+[、．.]|\d+[、．.])\s*"
+)
+
+
+def strip_enum_title_prefix(title: str) -> str:
+    """去掉标题开头的章节标号，避免列表里整页都是「一、…」。"""
+    t = (title or "").strip()
+    cleaned = _ENUM_TITLE_PREFIX.sub("", t, count=1).strip()
+    return cleaned if cleaned else t
+
+
 def guess_title(md_text: str, fallback: str) -> str:
     # Strip fenced code blocks first, otherwise comments like `# xxx`
     # inside bash snippets would be mistaken for a heading.
@@ -37,15 +50,70 @@ def guess_title(md_text: str, fallback: str) -> str:
     # which may appear after bash comment lines like "# =========="
     text = re.sub(r"(?m)^\s*#\s*[=]{3,}\s*$", "", text)
     text = re.sub(r"(?m)^\s*#\s*[-]{3,}\s*$", "", text)
-    # Prefer ## (level-2) headings first, as most articles use ## as the main title.
-    m = re.search(r"(?m)^\s*##\s+(.+?)\s*$", text)
-    if m:
-        return m.group(1).strip()
-    # Then fall back to # (level-1) heading.
+    # Prefer # (level-1) as the document title.
     m = re.search(r"(?m)^\s*#\s+(.+?)\s*$", text)
     if m:
-        return m.group(1).strip()
+        return strip_enum_title_prefix(m.group(1))
+    # Then the first ## that is not a numbered section heading.
+    for m in re.finditer(r"(?m)^\s*##\s+(.+?)\s*$", text):
+        raw = m.group(1).strip()
+        if _ENUM_TITLE_PREFIX.match(raw):
+            continue
+        return strip_enum_title_prefix(raw)
+    # Last resort: first ## even if numbered, but strip the prefix for display.
+    m = re.search(r"(?m)^\s*##\s+(.+?)\s*$", text)
+    if m:
+        return strip_enum_title_prefix(m.group(1).strip())
     return fallback
+
+
+def guess_excerpt(md_text: str, max_len: int = 140) -> str:
+    """从 Markdown 抽取列表预览摘要：跳过代码块、标题、文首元信息引用，取首段正文。"""
+    text = re.sub(r"(?s)```.*?```", "", md_text)
+    lines = text.splitlines()
+    body_lines: list[str] = []
+    skipping_meta = True
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if body_lines:
+                break
+            continue
+        if re.match(r"^#{1,6}\s", stripped) or re.match(r"^-{3,}$", stripped) or re.match(
+            r"^={3,}$", stripped
+        ):
+            if body_lines:
+                break
+            continue
+        # 文首 HTML 元信息块（如居中作者行）
+        if stripped.startswith("<") and not body_lines:
+            continue
+        if stripped.startswith(">"):
+            if skipping_meta:
+                continue
+            stripped = re.sub(r"^>\s?", "", stripped)
+            if not stripped:
+                continue
+        else:
+            skipping_meta = False
+
+        body_lines.append(stripped)
+
+    if not body_lines:
+        return ""
+
+    para = " ".join(body_lines)
+    para = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", para)
+    para = re.sub(r"`([^`]+)`", r"\1", para)
+    para = re.sub(r"\*\*(.+?)\*\*", r"\1", para)
+    para = re.sub(r"__(.+?)__", r"\1", para)
+    para = re.sub(r"(?<![\w*])\*(.+?)\*(?![\w*])", r"\1", para)
+    para = re.sub(r"<[^>]+>", "", para)
+    para = re.sub(r"\s+", " ", para).strip()
+    if len(para) <= max_len:
+        return para
+    return para[: max_len - 1].rstrip() + "…"
 
 
 def _ensure_blank_line_before_lists(md_text: str) -> str:
@@ -221,8 +289,9 @@ def sync_nav_full() -> None:
         for md_path in md_files:
             md_text = md_path.read_text(encoding="utf-8")
             title = guess_title(md_text, md_path.stem)
+            excerpt = guess_excerpt(md_text)
             href = f"./page/{key}/{md_path.stem}.html"
-            items.append({"href": href, "text": title})
+            items.append({"href": href, "text": title, "excerpt": excerpt})
         cat["items"] = items
 
     NAV_PATH.write_text(

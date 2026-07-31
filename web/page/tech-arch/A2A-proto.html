@@ -11,12 +11,22 @@
       a{color:#2563eb;text-decoration:none;}
       a:hover{text-decoration:underline;}
       img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
       table{border-collapse:collapse;}
       th,td{border:1px solid #d1d5db;padding:6px 10px;}
       th{background:#f9fafb;}
       article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
       article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
     </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
 </head>
 <body>
     <article>
@@ -92,7 +102,8 @@
 <hr />
 <h2>五、A2A 请求生命周期（A2A Request Lifecycle）</h2>
 <p>A2A 请求生命周期是一个序列，描述请求所遵循的四个主要步骤：智能体发现（agent discovery）、认证（authentication）、<code>sendMessage</code> API 和 <code>sendMessageStream</code> API。下图进一步展示操作流程，说明客户端、A2A 服务器与认证服务器之间的交互。</p>
-<pre><code class="language-mermaid">sequenceDiagram
+<div class="mermaid">
+sequenceDiagram
     participant Client
     participant A2A Server
     participant Auth Server
@@ -129,7 +140,7 @@
     A2A Server--&gt;&gt;Client: Stream: TaskArtifactUpdateEvent (artifact B)
     A2A Server--&gt;&gt;Client: Stream: TaskStatusUpdateEvent (Completed)
     end
-</code></pre>
+</div>
 <hr />
 <p><strong>本文出处与版权声明</strong></p>
 <ul>

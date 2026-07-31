@@ -8,55 +8,68 @@
       "items": [
         {
           "href": "./page/cpp/bad-case.html",
-          "text": "#1：使用未初始化变量（读取垃圾值 / UB）"
+          "text": "86 条 C/C++ 错误范例",
+          "excerpt": "说明： 段末 demo_signed_range_hint 仅作控制台提示，引出下一节有符号溢出。"
         },
         {
           "href": "./page/cpp/cpp-multibyte-encoding.html",
-          "text": "C++ 多字节编码：从字符集历史到跨平台实战"
+          "text": "C++ 多字节编码：从字符集历史到跨平台实战",
+          "excerpt": "📦 完整可运行示例代码：本文所有代码均已上传至 GitHub 仓库 os-artificer/ebooks，位于 src/cpp/cpp-multibyte-encoding/ 目录，在仓库根目录执行 make 即可一键编译。下文中的片段为说明原理的伪代码，正式可编译版本请查看…"
         },
         {
           "href": "./page/cpp/hot-updated.html",
-          "text": "一、什么是热更新？"
+          "text": "Linux 平台 C++ 热更新技术：从原理到实践",
+          "excerpt": "你有没有想过——一个跑在线上的游戏服务器，能不能在不重启的情况下修一个 bug？一个正在处理百万并发请求的后端服务，能不能在用户无感知的情况下升级某个模块？"
         },
         {
           "href": "./page/cpp/type_erasure.html",
-          "text": "一、什么是类型擦除技术"
+          "text": "C++ 类型擦除：原理、备选方案与从 C++11 到 C++98 的两份参考实现",
+          "excerpt": "std::function 能装下函数、lambda、绑定器；std::any 能装下任意类型；std::shared_ptr 在不暴露 T 的析构方式的前提下，依然能在控制块里\"记住\"该用谁来 delete——这些\"看起来不可能\"的事，背后用的都是同一类技术：类型擦除（Typ…"
         },
         {
           "href": "./page/cpp/函数重载覆盖与隐藏.html",
-          "text": "一、重载（Overload）：同一作用域，同名不同参"
+          "text": "C++ 函数：重载、覆盖、隐藏",
+          "excerpt": "面向对象里这三个词都带个\"函数\"，意思却差很远：重载是同一作用域里\"同名多份\"；覆盖是继承里重写虚函数；隐藏是派生类里同名把基类的给挡了。下面分三块捋一遍，最后给张表对照。"
         },
         {
           "href": "./page/cpp/匿名namespace有什么作用.html",
-          "text": "C++ 匿名 namespace 有什么作用？"
+          "text": "C++ 匿名 namespace 有什么作用？",
+          "excerpt": "C++ 中匿名 namespace（匿名命名空间）的核心作用：用于实现文件级私有作用域的特性，是替代 C 语言 static 修饰全局变量/函数的更优方案。"
         },
         {
           "href": "./page/cpp/多线程与并发控制.html",
-          "text": "一、为啥总扯上“语法特性”"
+          "text": "C++ 多线程用法与并发控制详解",
+          "excerpt": "C++11 起，标准库正式提供了线程、互斥量、条件变量、原子类型与异步任务支持，分别位于 、、、、 头文件中。下面按语法特性，把“怎么开线程”和“怎么控并发”捋一遍。"
         },
         {
           "href": "./page/cpp/如何设计一个内存池.html",
-          "text": "一、为什么需要内存池？"
+          "text": "C++ 内存池：为什么、何时用、怎么造、社区里有哪些轮子",
+          "excerpt": "系统自带的 malloc / new 通用、正确、久经考验，但在固定对象尺寸、极高分配频率、严格延迟上限的场景里，往往会成为瓶颈或抖动来源。"
         },
         {
           "href": "./page/cpp/无锁队列的实现原理.html",
-          "text": "一、按并发模型分"
+          "text": "C++ 高性能编程之无锁队列的实现原理",
+          "excerpt": "无锁队列不用互斥锁，靠\"原子操作\"和\"内存序\"让多线程安全地入队、出队。实现方式可以从两个维度看：并发模型（谁在生产、谁在消费）和同步机制（用哪种原子原语）。下面按这两条线捋一遍，最后给一个 SPSC + 原子 load/store 的简单例子。"
         },
         {
           "href": "./page/cpp/枚举类型的特点及用法.html",
-          "text": "C++ 枚举类型：特点、用法与注意事项"
+          "text": "C++ 枚举类型：特点、用法与注意事项",
+          "excerpt": "枚举（enum）本质就是一组\"具名整型常量\"的集合：用名字替代魔法数字，读起来省心，改起来也集中。C++ 这些年对枚举的升级很明确：从\"像 int\"的老枚举，演进到\"独立类型\"的 enum class，再到 C++20/23 补齐易用性细节。"
         },
         {
           "href": "./page/cpp/模版泛化特化实例化.html",
-          "text": "一、泛化：先有一张\"万能图纸\""
+          "text": "C++ 模板：泛化、实例化、特化",
+          "excerpt": "读 STL、Boost 这类库时，满眼都是 template，不搞懂泛化、特化和实例化，很容易卡在源码门口。这篇文章咱们把三件事捋清楚：它们各是啥、编译器怎么选版本、顺带用一个\"类型是否相同\"的小例子串起来。"
         },
         {
           "href": "./page/cpp/线程池实现方案汇总.html",
-          "text": "一、先明确：线程池要解决的核心问题"
+          "text": "C++ 线程池实现全方案：从中央队列到工作窃取",
+          "excerpt": "线程池在 C++ 工程里几乎无处不在：它把“创建/销毁线程”的成本摊薄，把“任务提交”从业务逻辑里解耦出来，并通过队列与同步机制把并发的复杂度集中到少数模块中。"
         },
         {
           "href": "./page/cpp/限制继承的方法有哪些.html",
-          "text": "一、不让类再被继承（终结类）"
+          "text": "C++ 各版本\"限制继承\"都有哪些招？",
+          "excerpt": "一说\"限制继承\"，其实有两层意思：一是不让别人再继承这个类（终结类），二是不让子类再重写某个虚函数。本文按 C++ 版本捋一遍，怎么实现、怎么选。"
         }
       ]
     },
@@ -68,15 +81,13 @@
       "items": [
         {
           "href": "./page/design-mode/adapter-pattern.html",
-          "text": "C++ 设计模式实践：适配器模式——让不兼容的接口握手言和"
+          "text": "C++ 设计模式实践：适配器模式——让不兼容的接口握手言和",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-07-26 | 阅读时长：约 13 分钟"
         },
         {
           "href": "./page/design-mode/state-pattern.html",
-          "text": "C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装"
-        },
-        {
-          "href": "./page/design-mode/strategy-pattern.html",
-          "text": "C++ 设计模式实践：策略模式——把\"选算法\"交给运行时"
+          "text": "C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-07-26 | 阅读时长：约 15 分钟"
         }
       ]
     },
@@ -88,35 +99,43 @@
       "items": [
         {
           "href": "./page/golang/cgo.html",
-          "text": "CGO 是什么？"
+          "text": "深入浅出 CGO：Go 与 C 互操作原理与实践",
+          "excerpt": "日常 Go 开发中，绝大多数需求用纯 Go 就能搞定。"
         },
         {
           "href": "./page/golang/go-build-flag-tag.html",
-          "text": "为什么 build flag 值得认真学"
+          "text": "Go build flags 实战：7 个场景掌握构建期控制",
+          "excerpt": "日常开发中，你大概率写过这样的命令："
         },
         {
           "href": "./page/golang/go-generate.html",
-          "text": "Go 工程化实战：go generate——少写样板代码，让工具替你干活"
+          "text": "Go 工程化实战：go generate——少写样板代码，让工具替你干活",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-07-27 | 阅读时长：约 13 分钟"
         },
         {
           "href": "./page/golang/go-perf-bottleneck.html",
-          "text": "Go 服务性能瓶颈分析：从现象到根因的一套诊疗方法"
+          "text": "Go 服务性能瓶颈分析：从现象到根因的一套诊疗方法",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-07-28 | 阅读时长：约 14 分钟"
         },
         {
           "href": "./page/golang/safe-package-panic-recovery-in-depth.html",
-          "text": "一、问题背景：为什么需要统一的 Panic 防护？"
+          "text": "Go 生产级 Panic 防护实战：从一个 safe 包看防御性编程的艺术",
+          "excerpt": "在 Go 语言的并发编程中，panic 是一颗随时可能引爆的\"地雷\"——一个未被 recover 的 goroutine panic 会直接导致整个进程崩溃。 对于需要 7×24 小时运行的服务端程序而言，这种行为是灾难性的。"
         },
         {
           "href": "./page/golang/一种优雅的配置模式实践.html",
-          "text": "一、长什么样"
+          "text": "Go 一种优雅的配置模式实践",
+          "excerpt": "构造一个组件时，往往有一堆“可配可不配”的参数：主机、端口、编码、是否解析时间……全塞进构造函数要么参数表爆炸，要么到处传一个巨大的配置结构体。"
         },
         {
           "href": "./page/golang/怎么实现chan的读写超时.html",
-          "text": "Go 中怎么实现 chan 读写超时？"
+          "text": "Go 中怎么实现 chan 读写超时？",
+          "excerpt": "Go 的 chan 读写默认是阻塞的：没有数据时读会一直等，缓冲区满时写也会一直等。"
         },
         {
           "href": "./page/golang/怎么实现守护进程.html",
-          "text": "1. 先看实现守护需要的基础能力"
+          "text": "用 Go 实现父子双进程守护：从原理到落地",
+          "excerpt": "很多同学第一次做守护进程时，都会遇到同一组问题："
         }
       ]
     },
@@ -128,7 +147,8 @@
       "items": [
         {
           "href": "./page/stl/读懂stl_map.h：从红黑树到接口语义.html",
-          "text": "零、先给你一张“源码速读导航”"
+          "text": "深入拆解 stl_map.h：GCC 的 std::map 到底怎么跑起来",
+          "excerpt": "本文结合map的源码对其实现和特性进行分析学习。 直接顺着 libstdc++-v3/include/bits/stl_map.h 和 bits/stl_tree.h 把 std::map 的底层机制掰开。 当你阅读完本文后，你可以真正的能解释“为什么接口这么设计”，而不只是记…"
         }
       ]
     },
@@ -140,19 +160,23 @@
       "items": [
         {
           "href": "./page/linux/elf.html",
-          "text": "一、什么是 ELF？"
+          "text": "ELF 文件格式数据结构全解析",
+          "excerpt": "ELF（Executable and Linkable Format）是 Linux 系统下可执行文件、共享库、目标文件和 Core Dump 的标准格式。它定义了二进制文件中代码、数据、符号、重定位等信息的组织方式。"
         },
         {
           "href": "./page/linux/fork-deep-dive.html",
-          "text": "一、全景：调用链与数据流"
+          "text": "深入 Linux 内核：一次 fork() 调用，内核到底做了什么？",
+          "excerpt": "很多人学 Linux 编程，第一个\"哇塞\"的时刻就是 fork()——调用一次，返回两次；父进程拿到子 PID，子进程拿到 0。听起来像魔术，但内核里没有魔术，只有代码。"
         },
         {
           "href": "./page/linux/macos-linux-source-setup.html",
-          "text": "问题背景"
+          "text": "macOS上保存Linux源码的方案",
+          "excerpt": "在macOS默认的文件系统（APFS或HFS+，不区分大小写）上处理Linux内核源码时，会遇到Git无法正确跟踪文件名大小写的问题。"
         },
         {
           "href": "./page/linux/qemu-gdb-kernel-wechat.html",
-          "text": "一、安装依赖"
+          "text": "入门实践：在 x86_64 上使用 QEMU 与 GDB 配置Linux 内核调试环境",
+          "excerpt": "本文面向 x86_64 主机，以 Ubuntu / Debian 系发行版为例，说明如何依次完成：获取内核源码、配置并编译带调试信息的内核、使用 QEMU 加载内核、通过 GDB 远程连接并设置断点（以 start_kernel 为例）。"
         }
       ]
     },
@@ -164,7 +188,8 @@
       "items": [
         {
           "href": "./page/libc-gcc/glibc-memory-workings.html",
-          "text": "一、先看一眼全景：一次 malloc / free 到底发生了什么"
+          "text": "glibc malloc / free 机制解析：一次分配从用户代码走到内核的全程",
+          "excerpt": "一行 malloc、一行 free，背后其实干了很多事：先查线程本地缓存，没有再去抢 arena 锁，还不够就找内核要；free 时要合并相邻空闲块，条件合适才还给内核。RSS 只涨不降、尾延迟抖动、偶发崩溃，很多时候根就在这里。"
         }
       ]
     },
@@ -176,35 +201,43 @@
       "items": [
         {
           "href": "./page/tech-arch/A2A-proto.html",
-          "text": "一、为何要用 A2A？"
+          "text": "什么是 A2A？",
+          "excerpt": "A2A（Agent2Agent）协议是一种开放标准，让 AI 智能体之间能无缝通信、一起干活。它给用不同框架、不同厂商做出来的智能体提供一套\"通用语言\"，促进互操作性，打破孤岛。智能体就是在自己环境里独立做决策、解决问题的角色；A2A 让来自不同开发者、不同框架、不同组织的智能…"
         },
         {
           "href": "./page/tech-arch/arp-protocol.html",
-          "text": "ARP 与 NDP 协议深度解析：从地址解析到安全攻防的完整指南"
+          "text": "ARP 与 NDP 协议深度解析：从地址解析到安全攻防的完整指南",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-07-18 | 阅读时长：约 40 分钟"
         },
         {
           "href": "./page/tech-arch/http-protocol-evolution.html",
-          "text": "HTTP 协议演进史：从一行文本到多路复用的全面解析"
+          "text": "HTTP 协议演进史：从一行文本到多路复用的全面解析",
+          "excerpt": "我们每天打开浏览器、刷短视频、点外卖、扫码支付，背后都在悄悄地发出成千上万个 HTTP 请求。"
         },
         {
           "href": "./page/tech-arch/ip-protocol.html",
-          "text": "IPv4/IPv6 的定义、原理、网段划分与双栈兼容"
+          "text": "IPv4/IPv6 的定义、原理、网段划分与双栈兼容",
+          "excerpt": "你每天上网冲浪、刷视频、远程办公，数据在成千上万台设备之间穿梭而不丢失。"
         },
         {
           "href": "./page/tech-arch/tcp-workflow.html",
-          "text": "从三次握手到四次挥手：一文搞懂TCP的\"一生\""
+          "text": "从三次握手到四次挥手：一文搞懂TCP的\"一生\"",
+          "excerpt": "你有没有想过，当你在浏览器输入一个网址按下回车，到网页显示出来，这中间发生了什么？"
         },
         {
           "href": "./page/tech-arch/udp-reliable-transport.html",
-          "text": "从 UDP 到可靠传输：KCP 与 QUIC 的原理、对比与选择"
+          "text": "方法 1: 使用 curl 测试 QUIC/HTTP/3 连接",
+          "excerpt": "你有没有想过，当你在玩王者荣耀时，技能释放几乎零延迟；当你用 Chrome 浏览网页时，首次加载快得惊人；当你用某款游戏加速器时，速度比直连还快。"
         },
         {
           "href": "./page/tech-arch/uuid.html",
-          "text": "一、UUID 的历史背景与应用场景"
+          "text": "UUID 深度揭秘：那些隐藏在你 ID 里的敏感信息",
+          "excerpt": "你是否想过，一个看似随机的 UUID，可能正悄悄地泄露你的 MAC 地址、服务器 IP，甚至精确到 100 纳秒的系统时间？"
         },
         {
           "href": "./page/tech-arch/数据库选型方案.html",
-          "text": "一、关系型数据库（RDBMS）"
+          "text": "2026 数据库选型指南：从 OLTP 到时序一网打尽",
+          "excerpt": "引导语：选数据库总踩坑？7 大类、30 + 主流库一次性讲清优缺点与场景，看完少走 90% 弯路，架构与开发都能直接用。"
         }
       ]
     }

@@ -24,16 +24,8 @@
       .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
     </style>
     <script type="module">
-      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-      mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
-      document.querySelectorAll('pre > code.language-mermaid').forEach((el) => {
-        const pre = el.parentElement;
-        const div = document.createElement('div');
-        div.className = 'mermaid';
-        div.textContent = el.textContent;
-        pre.replaceWith(div);
-      });
-      mermaid.run();
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
     </script>
 </head>
 <body>
@@ -57,8 +49,8 @@
 <p>简言之：<strong>编码是"字符集合"到"字节序列"的双向映射规则</strong>。</p>
 <div class="mermaid">
 flowchart LR
-    C(["字符 Character<br/>给人看"]) -->|编码 encode| B(["字节 Byte<br/>落盘·传输"])
-    B -->|解码 decode| C
+    C([&quot;字符 Character&lt;br/&gt;给人看&quot;]) --&gt;|编码 encode| B([&quot;字节 Byte&lt;br/&gt;落盘·传输&quot;])
+    B --&gt;|解码 decode| C
 </div>
 <ul>
 <li><strong>字符</strong>：人眼看到的抽象符号，比如 <code>A</code>、<code>中</code>、<code>😀</code>。</li>
@@ -70,10 +62,10 @@ flowchart LR
 <p>最早的共识是 <strong>ASCII</strong>：用 1 个字节的<strong>低 7 位</strong>表示 128 个字符，覆盖了英文字母、数字、标点和控制符（<code>A=0x41</code>、<code>a=0x61</code>、换行 <code>0x0A</code>）。</p>
 <div class="mermaid">
 flowchart LR
-    subgraph BYTE["1 字节 (8 位)"]
+    subgraph BYTE[&quot;1 字节 (8 位)&quot;]
         direction LR
-        B7["bit 7<br/>0 (未用)"]
-        B06["bit 0~6<br/>字符编码区"]
+        B7[&quot;bit 7&lt;br/&gt;0 (未用)&quot;]
+        B06[&quot;bit 0~6&lt;br/&gt;字符编码区&quot;]
     end
     style B7 fill:#e8f0fe,stroke:#3366cc,color:#3366cc
     style B06 fill:#e6f4ea,stroke:#137333,color:#137333
@@ -162,9 +154,9 @@ flowchart LR
 <p>但"Unicode 怎么存成字节"又分化出三种编码：</p>
 <div class="mermaid">
 flowchart TD
-    U(["Unicode 码点<br/>如 中 = U+4E2D"]) -->|UTF-8| U8["1~4 字节 · 变长 · 自同步 · 兼容 ASCII<br/>互联网 / Linux 默认"]
-    U -->|UTF-16| U16["2 或 4 字节(代理对)<br/>Windows 内部用"]
-    U -->|UTF-32| U32["4 字节定长<br/>简单但费空间"]
+    U([&quot;Unicode 码点&lt;br/&gt;如 中 = U+4E2D&quot;]) --&gt;|UTF-8| U8[&quot;1~4 字节 · 变长 · 自同步 · 兼容 ASCII&lt;br/&gt;互联网 / Linux 默认&quot;]
+    U --&gt;|UTF-16| U16[&quot;2 或 4 字节(代理对)&lt;br/&gt;Windows 内部用&quot;]
+    U --&gt;|UTF-32| U32[&quot;4 字节定长&lt;br/&gt;简单但费空间&quot;]
 </div>
 <p>UTF-8 的编码规则（按码点范围选模板）很规整：</p>
 <table>
@@ -220,11 +212,11 @@ flowchart TD
 <p>它们带来三个经典坑：</p>
 <div class="mermaid">
 flowchart TD
-    S["s = '中文' (GBK)"] --> B["字节序列: [d6 d0] [ce c4]<br/>(每个汉字 2 字节, A 仅 1 字节 → 长度不固定)"]
-    B --> SZ["s.size() == 4  ← 这是字节数, 不是字符数!"]
-    B --> IDX["按字节随机访问"]
-    IDX --> I0["s[0] = 0xd6 → '中' 的第 1 字节, 单独拿出无意义"]
-    IDX --> I2["s[2] = 0xce → '文' 的第 1 字节"]
+    S[&quot;s = '中文' (GBK)&quot;] --&gt; B[&quot;字节序列: [d6 d0] [ce c4]&lt;br/&gt;(每个汉字 2 字节, A 仅 1 字节 → 长度不固定)&quot;]
+    B --&gt; SZ[&quot;s.size() == 4  ← 这是字节数, 不是字符数!&quot;]
+    B --&gt; IDX[&quot;按字节随机访问&quot;]
+    IDX --&gt; I0[&quot;s[0] = 0xd6 → '中' 的第 1 字节, 单独拿出无意义&quot;]
+    IDX --&gt; I2[&quot;s[2] = 0xce → '文' 的第 1 字节&quot;]
 </div>
 <ul>
 <li><strong>长度不固定</strong>：<code>strlen</code> 返回的是<strong>字节数不是字符数</strong>。</li>
@@ -235,8 +227,8 @@ flowchart TD
 <p>同一串字节在不同代码页下解释成不同字符。比如字节 <code>D6 D0</code>：</p>
 <div class="mermaid">
 flowchart TD
-    D["字节 D6 D0"] -->|GBK 代码页| G["中"]
-    D -->|Windows-1252 / Latin-1| W["ÖÐ"]
+    D[&quot;字节 D6 D0&quot;] --&gt;|GBK 代码页| G[&quot;中&quot;]
+    D --&gt;|Windows-1252 / Latin-1| W[&quot;ÖÐ&quot;]
 </div>
 <p>这就是"乱码"的本质：<strong>字节没变，解释规则变了</strong>。</p>
 <p>Windows 上"ANSI 代码页"会随系统区域设置而变，更放大了这种不确定性。</p>
@@ -281,9 +273,9 @@ flowchart TD
 <h3><code>char</code> 只是字节，<code>std::string</code> 只是字节串</h3>
 <div class="mermaid">
 flowchart LR
-    S["std::string s = '中文AB'"] --> B["内部字节序列 (UTF-8):<br/>[e4 b8 ad] [e6 96 87] [41] [42]<br/>对应: 中 / 文 / A / B"]
-    B --> N["s.size() = 8  → 字节数"]
-    B --> P["码点数 = 4  → 字符数"]
+    S[&quot;std::string s = '中文AB'&quot;] --&gt; B[&quot;内部字节序列 (UTF-8):&lt;br/&gt;[e4 b8 ad] [e6 96 87] [41] [42]&lt;br/&gt;对应: 中 / 文 / A / B&quot;]
+    B --&gt; N[&quot;s.size() = 8  → 字节数&quot;]
+    B --&gt; P[&quot;码点数 = 4  → 字符数&quot;]
 </div>
 <p>下面用一段<strong>伪代码</strong>点出核心原理（完整可运行程序与实测输出见 <code>src/cpp/cpp-multibyte-encoding/utf8_basics.cpp</code>）：</p>
 <pre><code class="language-cpp">// 伪代码：UTF-8 中&quot;字节数 ≠ 字符数&quot;（完整可运行见 src/cpp/cpp-multibyte-encoding/utf8_basics.cpp）
@@ -306,9 +298,9 @@ s.substr(1) 结果(出现乱码/替换符): ��文AB
 <p>源码里写的 <code>"中文"</code> 到底是什么字节，取决于<strong>源文件本身以什么编码保存</strong>，以及<strong>编译器是否按该编码解读</strong>：</p>
 <div class="mermaid">
 flowchart TD
-    L["源码 '中文' 字面量"] --> Q{"文件以什么编码保存<br/>编译器按什么编码解读?"}
-    Q -->|"UTF-8 文件 + 编译器当 UTF-8 读"| OK["得到正确 UTF-8 字节 ✅"]
-    Q -->|"UTF-8 文件 + MSVC 当 GBK(系统代码页)读"| BAD["被错误转译 → 乱码 ❌"]
+    L[&quot;源码 '中文' 字面量&quot;] --&gt; Q{&quot;文件以什么编码保存&lt;br/&gt;编译器按什么编码解读?&quot;}
+    Q --&gt;|&quot;UTF-8 文件 + 编译器当 UTF-8 读&quot;| OK[&quot;得到正确 UTF-8 字节 ✅&quot;]
+    Q --&gt;|&quot;UTF-8 文件 + MSVC 当 GBK(系统代码页)读&quot;| BAD[&quot;被错误转译 → 乱码 ❌&quot;]
 </div>
 <ul>
 <li>GCC / Clang：默认把源文件当 UTF-8 解读字面量字节。</li>
@@ -320,15 +312,15 @@ flowchart TD
 <p>其实 <code>wchar_t</code> 的宽度由实现定义：</p>
 <div class="mermaid">
 flowchart LR
-    subgraph WIN["Windows"]
+    subgraph WIN[&quot;Windows&quot;]
         direction LR
-        W1["sizeof = 2 字节"]
-        W2["UTF-16"]
+        W1[&quot;sizeof = 2 字节&quot;]
+        W2[&quot;UTF-16&quot;]
     end
-    subgraph LNX["Linux / macOS"]
+    subgraph LNX[&quot;Linux / macOS&quot;]
         direction LR
-        L1["sizeof = 4 字节"]
-        L2["UTF-32"]
+        L1[&quot;sizeof = 4 字节&quot;]
+        L2[&quot;UTF-32&quot;]
     end
     style WIN fill:#e8f0fe,stroke:#3366cc,color:#3366cc
     style LNX fill:#e6f4ea,stroke:#137333,color:#137333
@@ -371,8 +363,8 @@ iconv_close(cd)
 <p>转换流程示意：</p>
 <div class="mermaid">
 flowchart LR
-    U8["UTF-8 字节串<br/>(内部处理)"] -->|"iconv('GBK','UTF-8')"| G["GBK 字节串<br/>存盘 / 发协议"]
-    G -->|"iconv('UTF-8','GBK')"| U8
+    U8[&quot;UTF-8 字节串&lt;br/&gt;(内部处理)&quot;] --&gt;|&quot;iconv('GBK','UTF-8')&quot;| G[&quot;GBK 字节串&lt;br/&gt;存盘 / 发协议&quot;]
+    G --&gt;|&quot;iconv('UTF-8','GBK')&quot;| U8
 </div>
 <p>注意点：</p>
 <ul>
@@ -400,8 +392,8 @@ utf8_to_ansi(s) = wide_to_ansi(utf8_to_wide(s))      // 组合
 <p>Windows 侧转换流程：</p>
 <div class="mermaid">
 flowchart LR
-    U8["UTF-8"] -->|"MultiByteToWideChar(CP_UTF8)"| W["UTF-16 (wchar_t)"]
-    W -->|"WideCharToMultiByte(CP_ACP)"| A["ANSI 代码页多字节串"]
+    U8[&quot;UTF-8&quot;] --&gt;|&quot;MultiByteToWideChar(CP_UTF8)&quot;| W[&quot;UTF-16 (wchar_t)&quot;]
+    W --&gt;|&quot;WideCharToMultiByte(CP_ACP)&quot;| A[&quot;ANSI 代码页多字节串&quot;]
 </div>
 <p>说明：Windows 分支使用标准 Win32 API，与 POSIX 分支一一对应；作者的开发机为 macOS，因此仅验证了 POSIX 分支，Windows 侧代码需以微软官方文档为准。</p>
 <h3>Windows 控制台输出 UTF-8（常见必做项）</h3>
@@ -447,9 +439,9 @@ sequenceDiagram
     participant C as 客户端 (Windows, GBK)
     participant S as 服务端 (Linux, UTF-8)
     Note over C: 内部: '中文' = GBK 字节 d6 d0 ce c4
-    C->>S: TCP 发送字节 d6 d0 ce c4
+    C-&gt;&gt;S: TCP 发送字节 d6 d0 ce c4
     Note over S: 按 UTF-8 解码 → 乱码!
-    S-->>C: 数据无法正确解析
+    S--&gt;&gt;C: 数据无法正确解析
 </div>
 <p><strong>典型问题清单：</strong></p>
 <table>
@@ -495,10 +487,10 @@ sequenceDiagram
     participant CI as 客户端内部 (任意编码)
     participant N as 网络传输层 (统一 UTF-8)
     participant SI as 服务端内部 (任意编码)
-    CI->>N: 发送前转 UTF-8 (如 gbk_to_utf8)
+    CI-&gt;&gt;N: 发送前转 UTF-8 (如 gbk_to_utf8)
     Note over N: 协议层面只认 UTF-8
-    N->>SI: 收到即 UTF-8, 服务端边界转回本机编码
-    SI-->>CI: 响应同理, 全程 UTF-8 传输
+    N-&gt;&gt;SI: 收到即 UTF-8, 服务端边界转回本机编码
+    SI--&gt;&gt;CI: 响应同理, 全程 UTF-8 传输
 </div>
 <p>实践中应遵守的核心原则：<strong>网络传输层统一用 UTF-8，各自在 I/O 边界做转换</strong>。</p>
 <p><strong>HTTP 的做法值得借鉴</strong>：<code>Content-Type: text/plain; charset=UTF-8</code> 这个头就是双方约定的"解码规则说明书"。</p>
@@ -545,11 +537,11 @@ parse_frame(buf):
 <p>其根因正是前文说的<strong>"字节没变，解释规则变了"</strong>——只是多了一道"替换符"环节：</p>
 <div class="mermaid">
 flowchart TD
-    A["UTF-8 字节流里有无法解码的坏字节/坏序列"] --> B["宽松解码器以 U+FFFD 替换符填补<br/>(U+FFFD 的 UTF-8 字节 = EF BF BD)"]
-    B --> C["文本里出现大量 EF BF BD 字节"]
-    C --> D["该文本被某环节当成 GBK 解读 / 落盘成 GBK"]
-    D --> E["GBK 按 2 字节一组顺序解码: EF BF→锟, BD EF→斤, BF BD→拷<br/>(原序列 EF BF BD 以 3 字节为周期, 与 2 字节窗口相位错开, 持续解码循环出 锟斤拷)"]
-    E --> F["屏幕连片出现 '锟斤拷'"]
+    A[&quot;UTF-8 字节流里有无法解码的坏字节/坏序列&quot;] --&gt; B[&quot;宽松解码器以 U+FFFD 替换符填补&lt;br/&gt;(U+FFFD 的 UTF-8 字节 = EF BF BD)&quot;]
+    B --&gt; C[&quot;文本里出现大量 EF BF BD 字节&quot;]
+    C --&gt; D[&quot;该文本被某环节当成 GBK 解读 / 落盘成 GBK&quot;]
+    D --&gt; E[&quot;GBK 按 2 字节一组顺序解码: EF BF→锟, BD EF→斤, BF BD→拷&lt;br/&gt;(原序列 EF BF BD 以 3 字节为周期, 与 2 字节窗口相位错开, 持续解码循环出 锟斤拷)&quot;]
+    E --&gt; F[&quot;屏幕连片出现 '锟斤拷'&quot;]
 </div>
 <p>关键点：<strong><code>锟斤拷</code> 三个字本身不是原数据，而是连续的 <code>EF BF BD</code>（U+FFFD 的 UTF-8 字节）被 GBK 每 2 字节一组顺序解码后的字形</strong>：<code>EF BF→锟</code>、<code>BD EF→斤</code>、<code>BF BD→拷</code>。由于原序列是每 3 字节重复一次的 <code>EF BF BD</code>，而 GBK 按每 2 字节一组顺序解码，两个窗口相位错开，持续解码便循环出 锟斤拷（锟→斤→拷→锟→…）。源头通常是"UTF-8 被当成 GBK 解，又用 GBK 重新编码"的二次转码——坏字节被一次性替换成 <code>U+FFFD</code>，再经 GBK 渲染就成了这三个字。</p>
 <p>💡 <strong>C++ 启示</strong>：这正解释了前文 <code>iconv</code> 代码为什么要处理 <code>EILSEQ</code>——遇到非法字节别"硬填替换符再往外传"，能拒绝就拒绝、能记录就记录，否则坏数据会在系统间反复转码、越滚越乱。</p>
@@ -557,20 +549,20 @@ flowchart TD
 <p>很多人的第一反应是"我都用 UTF-8 了怎么还会丢字符"，坑在 <strong>MySQL 的 <code>utf8</code> 实际上是 <code>utf8mb3</code>——最多只支持 3 字节，而 emoji 落在辅助平面（<code>U+10000</code> 以上）需要 4 字节</strong>：</p>
 <div class="mermaid">
 flowchart LR
-    E["emoji 笑脸 = U+1F600 (😀)"] --> B["UTF-8 需 4 字节: F0 9F 98 80"]
-    B --> Q{"写入哪种字符集的列?"}
-    Q -->|"utf8: 3 字节上限"| X["报错 1366 或字符被截断丢失 ❌"]
-    Q -->|"utf8mb4: 4 字节"| Y["正确存储, 原样取回 ✅"]
+    E[&quot;emoji 笑脸 = U+1F600 (😀)&quot;] --&gt; B[&quot;UTF-8 需 4 字节: F0 9F 98 80&quot;]
+    B --&gt; Q{&quot;写入哪种字符集的列?&quot;}
+    Q --&gt;|&quot;utf8: 3 字节上限&quot;| X[&quot;报错 1366 或字符被截断丢失 ❌&quot;]
+    Q --&gt;|&quot;utf8mb4: 4 字节&quot;| Y[&quot;正确存储, 原样取回 ✅&quot;]
 </div>
 <p>💡 <strong>C++ 启示</strong>：这和本文 <code>std::string</code> 的字节陷阱同源——<code>😀</code> 在 UTF-8 下 <code>size()</code> 返回 <strong>4</strong>，不是 1。任何"假设一个字符 ≤ 3 字节""按固定宽度切片"的写法，遇到辅助平面字符都会崩。要么用 <code>utf8mb4</code>（数据库侧），要么用码点计数 / <code>char32_t</code>（代码侧）。</p>
 <h3>案例 3. 按字节数截断，截在码点中间 → 制造非法 UTF-8（切片陷阱）</h3>
 <p>下面这起事故和前文 <code>s.substr(1)</code> 同源，但后果更严重：截断产生的"半截序列"会一路毒到下游解析器。</p>
 <div class="mermaid">
 flowchart TD
-    S["'中文AB' UTF-8 = e4 b8 ad e6 96 87 41 42 (共 8 字节)"] --> T["为省长度按 5 字节截断 (误当 5 个字符)"]
-    T --> R["得到 e4 b8 ad e6 96 (中 + 文 的前 2 字节)"]
-    R --> E["尾字节 96 是孤立的 UTF-8 续字节 → 非法序列"]
-    E --> P["下游 JSON / XML / 数据库解析报 EILSEQ 失败<br/>或文件被截断成乱码"]
+    S[&quot;'中文AB' UTF-8 = e4 b8 ad e6 96 87 41 42 (共 8 字节)&quot;] --&gt; T[&quot;为省长度按 5 字节截断 (误当 5 个字符)&quot;]
+    T --&gt; R[&quot;得到 e4 b8 ad e6 96 (中 + 文 的前 2 字节)&quot;]
+    R --&gt; E[&quot;尾字节 96 是孤立的 UTF-8 续字节 → 非法序列&quot;]
+    E --&gt; P[&quot;下游 JSON / XML / 数据库解析报 EILSEQ 失败&lt;br/&gt;或文件被截断成乱码&quot;]
 </div>
 <p>💡 <strong>C++ 启示</strong>：切片必须"按码点迭代"而非 <code>substr(n)</code>（见 <code>utf8_basics.cpp</code> 的 <code>utf8_codepoint_count</code>）。更危险的是：被截断的半截序列若又被某个宽松解码器接受，可能拼出预期之外的字符——这正是<strong>案例 4</strong>要讲的攻击面。</p>
 <h3>案例 4. UTF-8 过长短编码（Overlong）绕过校验 —— 呼应 RFC 3629 红线（安全攻击面①）</h3>
@@ -578,9 +570,9 @@ flowchart TD
 <p>若解码器太"宽容"接受了它，攻击者就能"走私"字符绕过基于字符串的过滤：</p>
 <div class="mermaid">
 flowchart TD
-    A["攻击载荷: 用 overlong 表示 '/' → C0 AF"] --> B["字符串过滤器看到 C0 AF, 不匹配 '/' (2F) → 放行"]
-    B --> C["宽松 UTF-8 解码器接受 C0 AF → 解释为 '/'"]
-    C --> D["实际路径变成 '/etc/passwd' 之类 → 绕过 WAF / 路径校验"]
+    A[&quot;攻击载荷: 用 overlong 表示 '/' → C0 AF&quot;] --&gt; B[&quot;字符串过滤器看到 C0 AF, 不匹配 '/' (2F) → 放行&quot;]
+    B --&gt; C[&quot;宽松 UTF-8 解码器接受 C0 AF → 解释为 '/'&quot;]
+    C --&gt; D[&quot;实际路径变成 '/etc/passwd' 之类 → 绕过 WAF / 路径校验&quot;]
     style A fill:#fde7e9,stroke:#c0392b
     style D fill:#fde7e9,stroke:#c0392b
 </div>
@@ -602,15 +594,15 @@ for 每个首字节 c:
 <p>它们视觉相同、字节却不同，于是只认一种形式的黑名单就被绕过：</p>
 <div class="mermaid">
 flowchart LR
-    subgraph NFC["合成态 NFC"]
-        N1["é = U+00E9 → UTF-8: C3 A9"]
+    subgraph NFC[&quot;合成态 NFC&quot;]
+        N1[&quot;é = U+00E9 → UTF-8: C3 A9&quot;]
     end
-    subgraph NFD["分解态 NFD"]
-        N2["e + ́ = U+0065 U+0301 → UTF-8: 65 CC 81"]
+    subgraph NFD[&quot;分解态 NFD&quot;]
+        N2[&quot;e + ́ = U+0065 U+0301 → UTF-8: 65 CC 81&quot;]
     end
-    N1 --> F["关键字/黑名单只匹配 C3 A9"]
-    N2 --> F
-    F -->|"匹配 C3 A9 ✅, 漏掉 65 CC 81 ❌"| G["绕过敏感词/路径过滤<br/>视觉上却完全一样"]
+    N1 --&gt; F[&quot;关键字/黑名单只匹配 C3 A9&quot;]
+    N2 --&gt; F
+    F --&gt;|&quot;匹配 C3 A9 ✅, 漏掉 65 CC 81 ❌&quot;| G[&quot;绕过敏感词/路径过滤&lt;br/&gt;视觉上却完全一样&quot;]
 </div>
 <p>💡 <strong>C++ 启示</strong>：比较或存储字符串前，先<strong>统一做 Unicode 规范化（通常用 NFC）</strong>。标准库没这能力，<code>std::string</code> 更不懂——需要 ICU（见参考资源）的 <code>Normalizer2</code>（旧 <code>Normalizer</code> 自 ICU 56 起已废弃）。这再次提醒：<code>std::string</code> 只是字节串，"相等"与否取决于你是否先规范化、是否用同一套规则解释字节。</p>
 <p><strong>动手验证案例 5（完整程序见 <code>src/cpp/cpp-multibyte-encoding/c2_normalize.cpp</code>，需 ICU 开发库）</strong>：下面给出核心逻辑的伪代码，用 ICU 的 <code>Normalizer2</code>（现代 API，旧 <code>Normalizer</code> 已废弃）把分解态（NFD）规范化为合成态（NFC），两种写法就字节一致，黑名单只需认一种形式。下面用码点拼接构造字符串，完全不依赖源文件编码：</p>
