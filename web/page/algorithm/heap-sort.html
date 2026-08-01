@@ -78,11 +78,11 @@ function heapSort(arr, n):
 <p>对应伪代码的建堆过程（从最后一个非叶子节点开始自底向上）：</p>
 <div class="mermaid">
 flowchart LR
-    A([开始建堆]) --&gt; B[i = n/2 - 1&lt;br/&gt;最后一个非叶子节点]
-    B --&gt; C{i &gt;= 0 ?}
-    C --&gt;|否| D([建堆完成])
-    C --&gt;|是| E[heapify(arr, n, i)&lt;br/&gt;以 i 为根堆化]
-    E --&gt; F[--i]
+    A([&quot;开始建堆&quot;]) --&gt; B[&quot;i = n/2 - 1&lt;br/&gt;最后一个非叶子节点&quot;]
+    B --&gt; C{&quot;i &gt;= 0 ?&quot;}
+    C --&gt;|否| D([&quot;建堆完成&quot;])
+    C --&gt;|是| E[&quot;heapify(arr, n, i)&lt;br/&gt;以 i 为根堆化&quot;]
+    E --&gt; F[&quot;--i&quot;]
     F --&gt; C
 </div>
 <p>堆化（sift down，下沉操作）：</p>
@@ -90,16 +90,16 @@ flowchart LR
 flowchart TB
     subgraph 堆化[&quot; &quot;]
         direction TB
-        A1([以 root 为根]) --&gt; B1{左孩子存在 且 左 &gt; largest ?}
-        B1 --&gt;|是| C1[largest = 左]
-        B1 --&gt;|否| D1{右孩子存在 且 右 &gt; largest ?}
+        A1([&quot;以 root 为根&quot;]) --&gt; B1{&quot;左孩子存在 且 左 &gt; largest ?&quot;}
+        B1 --&gt;|是| C1[&quot;largest = 左&quot;]
+        B1 --&gt;|否| D1{&quot;右孩子存在 且 右 &gt; largest ?&quot;}
         C1 --&gt; D1
-        D1 --&gt;|是| E1[largest = 右]
-        D1 --&gt;|否| F1[largest 不变]
-        E1 --&gt; G1{largest != root ?}
+        D1 --&gt;|是| E1[&quot;largest = 右&quot;]
+        D1 --&gt;|否| F1[&quot;largest 不变&quot;]
+        E1 --&gt; G1{&quot;largest != root ?&quot;}
         F1 --&gt; G1
-        G1 --&gt;|是| H1[交换 root 与 largest&lt;br/&gt;递归堆化被影响的子树]
-        H1 --&gt; I1([完成])
+        G1 --&gt;|是| H1[&quot;交换 root 与 largest&lt;br/&gt;递归堆化被影响的子树&quot;]
+        H1 --&gt; I1([&quot;完成&quot;])
         G1 --&gt;|否| I1
     end
 </div>

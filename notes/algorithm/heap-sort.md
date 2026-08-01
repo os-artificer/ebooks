@@ -65,11 +65,11 @@ function heapSort(arr, n):
 
 ```mermaid
 flowchart LR
-    A([开始建堆]) --> B[i = n/2 - 1<br/>最后一个非叶子节点]
-    B --> C{i >= 0 ?}
-    C -->|否| D([建堆完成])
-    C -->|是| E[heapify(arr, n, i)<br/>以 i 为根堆化]
-    E --> F[--i]
+    A(["开始建堆"]) --> B["i = n/2 - 1<br/>最后一个非叶子节点"]
+    B --> C{"i >= 0 ?"}
+    C -->|否| D(["建堆完成"])
+    C -->|是| E["heapify(arr, n, i)<br/>以 i 为根堆化"]
+    E --> F["--i"]
     F --> C
 ```
 
@@ -79,16 +79,16 @@ flowchart LR
 flowchart TB
     subgraph 堆化[" "]
         direction TB
-        A1([以 root 为根]) --> B1{左孩子存在 且 左 > largest ?}
-        B1 -->|是| C1[largest = 左]
-        B1 -->|否| D1{右孩子存在 且 右 > largest ?}
+        A1(["以 root 为根"]) --> B1{"左孩子存在 且 左 > largest ?"}
+        B1 -->|是| C1["largest = 左"]
+        B1 -->|否| D1{"右孩子存在 且 右 > largest ?"}
         C1 --> D1
-        D1 -->|是| E1[largest = 右]
-        D1 -->|否| F1[largest 不变]
-        E1 --> G1{largest != root ?}
+        D1 -->|是| E1["largest = 右"]
+        D1 -->|否| F1["largest 不变"]
+        E1 --> G1{"largest != root ?"}
         F1 --> G1
-        G1 -->|是| H1[交换 root 与 largest<br/>递归堆化被影响的子树]
-        H1 --> I1([完成])
+        G1 -->|是| H1["交换 root 与 largest<br/>递归堆化被影响的子树"]
+        H1 --> I1(["完成"])
         G1 -->|否| I1
     end
 ```
