@@ -111,11 +111,11 @@ function bucketSort(arr, n):
 <p>对应伪代码的整体流程：</p>
 <div class="mermaid">
 flowchart LR
-    A([输入数组 arr]) --&gt; B[创建 k 个空桶&lt;br/&gt;k 通常 = n]
-    B --&gt; C[遍历 arr&lt;br/&gt;arr[i] 放入第 floor(arr[i]*k) 个桶]
-    C --&gt; D[对每个非空桶独立排序&lt;br/&gt;桶内少时插入排序更优]
-    D --&gt; E[按桶 0,1,...,k-1 顺序&lt;br/&gt;合并所有桶内元素]
-    E --&gt; F([输出有序数组])
+    A([&quot;输入数组 arr&quot;]) --&gt; B[&quot;创建 k 个空桶&lt;br/&gt;k 通常 = n&quot;]
+    B --&gt; C[&quot;遍历 arr&lt;br/&gt;arr[i] 放入第 floor(arr[i]*k) 个桶&quot;]
+    C --&gt; D[&quot;对每个非空桶独立排序&lt;br/&gt;桶内少时插入排序更优&quot;]
+    D --&gt; E[&quot;按桶 0,1,...,k-1 顺序&lt;br/&gt;合并所有桶内元素&quot;]
+    E --&gt; F([&quot;输出有序数组&quot;])
 </div>
 <h3>逐步演示</h3>
 <p>用 <code>[0.78, 0.17, 0.39, 0.26, 0.72, 0.94, 0.21, 0.12, 0.23, 0.68]</code>（n=10，10 个桶）跑一遍：</p>
