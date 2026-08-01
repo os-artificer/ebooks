@@ -569,6 +569,15 @@ body {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
 }
 
+.contact-rail__wechat-id {
+    color: var(--link);
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    min-width: 0;
+    line-height: inherit;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+}
+
 .contact-rail__link:hover {
     text-decoration: underline;
 }
