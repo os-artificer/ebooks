@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：计数排序——不比较，直接数</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：计数排序——不比较，直接数</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 11 分钟</p>
+<p>假设你要给一个班级的考试成绩排名，分数范围是 0 到 100 分。</p>
+<p>你不需要两两比较谁高谁低，只需要数一下：有几个 0 分、几个 1 分……几个 100 分，然后按顺序把分数"倒出来"就行了。</p>
+<p>这就是<strong>计数排序（Counting Sort）</strong>的思路：不通过元素之间的比较来确定顺序，而是统计每个值出现的次数，再根据计数结果直接输出有序序列。它是<strong>非比较排序</strong>的代表，当数据范围有限时可以做到真正的 O(n) 时间复杂度。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p><strong>先扫描一遍找出数据范围，开一个计数数组统计每个值出现的次数，然后通过前缀和计算每个元素的最终位置，反向遍历原数组把元素放到正确位置。</strong></p>
+<p>"数数就行了，不用比。" —— 计数排序完全跳出了"比较-交换"的框架，用空间换时间。</p>
+<h3>为什么能突破 O(n log n)</h3>
+<p>基于比较的排序算法有一个理论下界：<strong>O(n log n)</strong>。</p>
+<p>这是因为 n 个元素有 n! 种排列，每次比较只能排除一半的可能性，至少需要 log₂(n!) = O(n log n) 次比较。</p>
+<p>但计数排序<strong>不做比较</strong>，所以不受这个下界约束。</p>
+<p>代价是需要额外的计数数组，且数据范围不能太大。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+function countingSort(arr):
+    // Step 1: 找范围
+    minVal = min(arr), maxVal = max(arr)
+    k = maxVal - minVal + 1
+
+    // Step 2: 计数
+    count[k] = {0}
+    for each x in arr:
+        count[x - minVal]++
+
+    // Step 3: 前缀和
+    for i = 1 to k-1:
+        count[i] += count[i - 1]
+
+    // Step 4: 反向放置（保证稳定）
+    for i = n-1 downto 0:
+        idx = arr[i] - minVal
+        output[count[idx] - 1] = arr[i]
+        count[idx]--
+
+    return output
+</code></pre>
+<p>下面用流程图拆解这四步的核心流程。</p>
+<h3>工作原理流程图</h3>
+<p>对应伪代码的整体流程：</p>
+<div class="mermaid">
+flowchart LR
+    A([&quot;输入数组 arr&quot;]) --&gt; B[&quot;找 min 和 max&lt;br/&gt;确定范围&quot;]
+    B --&gt; C[&quot;开辟 count[max-min+1]&lt;br/&gt;初始化为 0&quot;]
+    C --&gt; D[&quot;遍历 arr 统计每个值出现次数&quot;]
+    D --&gt; E[&quot;对 count 做前缀和&lt;br/&gt;计算 &lt;= 每个值的元素个数&quot;]
+    E --&gt; F[&quot;反向遍历 arr&lt;br/&gt;按前缀和确定位置放入 output&quot;]
+    F --&gt; G([&quot;输出有序数组&quot;])
+</div>
+<p>前缀和与稳定放置：</p>
+<div class="mermaid">
+flowchart LR
+    A([&quot;count: 各值出现次数&quot;]) --&gt; B[&quot;prefix[i] = prefix[i-1] + count[i]&lt;br/&gt;prefix[i] = &lt;=值i 的元素总数&quot;]
+    B --&gt; C[&quot;反向遍历原数组 i = n-1 .. 0&quot;]
+    C --&gt; D[&quot;idx = arr[i] - min&quot;]
+    D --&gt; E[&quot;output[prefix[idx]-1] = arr[i]&quot;]
+    E --&gt; F[&quot;prefix[idx]--&quot;]
+    F --&gt; G{&quot;i &gt; 0 ?&quot;}
+    G --&gt;|是| C
+    G --&gt;|否| H([&quot;完成&quot;])
+</div>
+<h3>逐步演示</h3>
+<p>用 <code>[4, 2, 2, 8, 3, 3, 1]</code> 跑一遍：</p>
+<pre><code>初始数组: [4, 2, 2, 8, 3, 3, 1]
+数据范围: [1, 8] -&gt; 计数数组大小 = 8
+
+Step 1 - 计数数组 (下标+1 为实际值):
+  [1]:1  [2]:2  [3]:2  [4]:1  [8]:1
+
+Step 2 - 前缀和数组 (表示 &lt;= 该值的元素个数):
+  [1]:1  [2]:3  [3]:5  [4]:6  [8]:7
+
+Step 3 - 输出数组: [1, 2, 2, 3, 3, 4, 8]
+</code></pre>
+<p>前缀和的含义：<code>prefix[2]=3</code> 表示值 &lt;= 2 的元素有 3 个，所以最后一个 2 应该放在位置 2（下标 2）。</p>
+<p>反向遍历保证了相同值的元素保持原始相对顺序。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>整数排序且范围小</strong></td>
+<td>如年龄(1-100)、成绩(0-100)、考试编号等</td>
+</tr>
+<tr>
+<td><strong>作为基数排序的子过程</strong></td>
+<td>基数排序每一位就是用计数排序实现的</td>
+</tr>
+<tr>
+<td><strong>需要稳定线性时间排序</strong></td>
+<td>某些实时系统对延迟敏感</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>只适用于整数</strong>（或可映射到整数）</td>
+<td>浮点数/字符串无法直接使用</td>
+</tr>
+<tr>
+<td><strong>数据范围不能太大</strong></td>
+<td>如果 max-min &gt;&gt; n，空间浪费严重</td>
+</tr>
+<tr>
+<td><strong>不是原地排序</strong></td>
+<td>需要额外 O(k) 的计数数组（k=数据范围）</td>
+</tr>
+<tr>
+<td><strong>不适合通用场景</strong></td>
+<td>范围未知或范围很大时不如快排</td>
+</tr>
+</tbody>
+</table>
+<h3>稳定性</h3>
+<p>计数排序是<strong>稳定的</strong>。</p>
+<p>关键在于：</p>
+<ol>
+<li>使用前缀和确定位置（而非简单重复输出）</li>
+<li><strong>反向遍历</strong>原数组（从右往左）</li>
+</ol>
+<p>程序验证：</p>
+<pre><code>原始: (2,a) (3,x) (2,b) (1,y) (3,z)
+排序后: (1,y) (2,a) (2,b) (3,x) (3,z)
+</code></pre>
+<p>(2,a) 在 (2,b) 前，(3,x) 在 (3,z) 前 —— 相等值的相对顺序完美保持。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>时间复杂度怎么算</h3>
+<p>按以下步骤进行分析与计算：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>操作</th>
+<th>复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>找到 min/max</td>
+<td>遍历一次</td>
+<td>O(n)</td>
+</tr>
+<tr>
+<td>计数</td>
+<td>遍历一次</td>
+<td>O(n)</td>
+</tr>
+<tr>
+<td>前缀和</td>
+<td>遍历计数数组</td>
+<td>O(k)</td>
+</tr>
+<tr>
+<td>反向放置</td>
+<td>遍历一次</td>
+<td>O(n)</td>
+</tr>
+</tbody>
+</table>
+<p>总计 = <strong>O(n + k)</strong>，其中 n 是元素个数，k 是数据范围。</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>时间复杂度</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一般</td>
+<td><strong>O(n + k)</strong></td>
+<td>总是如此</td>
+</tr>
+<tr>
+<td>当 k = O(n) 时</td>
+<td><strong>O(n)</strong></td>
+<td>数据范围与规模同阶</td>
+</tr>
+<tr>
+<td>当 k &gt;&gt; n 时</td>
+<td><strong>O(k)</strong></td>
+<td>被 range 主导，退化为低效</td>
+</tr>
+</tbody>
+</table>
+<p>这就是为什么说计数排序适合"范围小的整数"。</p>
+<p>如果数据是 <code>[1, 1000000]</code>，要开一个百万大小的数组就不划算了。</p>
+<h3>空间复杂度</h3>
+<p>计数数组 size = k，输出数组 size = n → <strong>O(n + k)</strong></p>
+<p>📌 小结算法：<strong>时间 O(n+k)、空间 O(n+k)、稳定、非比较类、仅适用于范围有限的整数</strong>。</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：统计每个值出现的次数，通过前缀和计算位置，直接输出有序序列。完全不依赖元素间的比较。</li>
+<li><strong>解决什么 / 用在哪</strong>：小范围整数排序；基数排序的子过程；需要稳定线性时间的场景。</li>
+<li><strong>局限</strong>：只适用于整数；数据范围大时空间浪费严重；不适合通用排序。</li>
+<li><strong>复杂度怎么算</strong>：四步各 O(n) 或 O(k)，总计 O(n+k)。当 k=O(n) 时达到线性时间 O(n)，突破了比较排序 O(n log n) 的下界。空间 O(n+k)。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
