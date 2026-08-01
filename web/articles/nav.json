@@ -187,7 +187,7 @@
     },
     {
       "key": "libc-gcc",
-      "title": "libc / GCC",
+      "title": "学习源码",
       "open": false,
       "summaryClass": "nav-category--libc-gcc",
       "items": [
