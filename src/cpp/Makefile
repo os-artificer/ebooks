@@ -6,7 +6,7 @@ BINDIR := bin
 # ============================================================
 # 按文章分子目录，源文件在各子目录中
 # ============================================================
-SUBDIRS := cpp-multibyte-encoding hot-updated bad-case lock-free-queue design-mode
+SUBDIRS := cpp-multibyte-encoding hot-updated bad-case lock-free-queue design-mode algorithm
 SRCS := $(foreach d,$(SUBDIRS),$(wildcard $(d)/*.cpp))
 BINS := $(patsubst %.cpp,$(BINDIR)/%,$(notdir $(SRCS)))
 

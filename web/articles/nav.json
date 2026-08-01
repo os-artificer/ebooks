@@ -199,6 +199,19 @@
       ]
     },
     {
+      "key": "algorithm",
+      "title": "排序算法",
+      "open": true,
+      "summaryClass": "nav-category--algorithm",
+      "items": [
+        {
+          "href": "./page/algorithm/bubble-sort.html",
+          "text": "C++ 排序算法实践：冒泡排序——相邻比较，大数后移",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 12 分钟"
+        }
+      ]
+    },
+    {
       "key": "tech-arch",
       "title": "技术架构",
       "open": false,
