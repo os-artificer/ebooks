@@ -218,6 +218,11 @@
           "href": "./page/algorithm/counting-sort.html",
           "text": "C++ 排序算法实践：计数排序——不比较，直接数",
           "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 11 分钟"
+        },
+        {
+          "href": "./page/algorithm/heap-sort.html",
+          "text": "C++ 排序算法实践：堆排序——建堆弹出，原地有序",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 12 分钟"
         }
       ]
     },

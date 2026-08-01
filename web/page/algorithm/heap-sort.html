@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：堆排序——建堆弹出，原地有序</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：堆排序——建堆弹出，原地有序</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 12 分钟</p>
+<p>想象一下比赛颁奖的流程。</p>
+<p>先把所有选手的成绩建成一个排行榜（建堆），然后反复做一件事——把第一名请到领奖台（交换到末尾），剩下的人重新调整排名（堆化），再请新的第一名... 直到所有人都领完奖。</p>
+<p><strong>堆排序（Heap Sort）</strong> 利用的就是这个原理。</p>
+<p>先把数组建成一个大顶堆（父节点 &gt;= 子节点），然后把堆顶（当前最大值）交换到数组末尾，缩小堆范围重新堆化，重复直到堆中只剩一个元素。</p>
+<p>它是 J.W.J. Williams 在 1964 年发明的，也是唯一一个同时达到 O(n log n) 和 O(1) 空间的比较类排序算法。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p>先建一个能快速找到最大值的结构，然后不断摘除最大值。</p>
+<p>堆排序的关键数据结构是<strong>二叉堆</strong>（Binary Heap），一种用数组模拟的完全二叉树。</p>
+<h3>二叉堆的性质</h3>
+<p>对于下标从 0 开始的数组：</p>
+<ul>
+<li>父节点下标 <code>i</code> 的左孩子 = <code>2i + 1</code></li>
+<li>父节点下标 <code>i</code> 的右孩子 = <code>2i + 2</code></li>
+<li>孩子节点下标 <code>j</code> 的父节点 = <code>(j - 1) / 2</code></li>
+</ul>
+<p>大顶堆性质：每个节点的值 &gt;= 它的左右孩子的值。因此<strong>根节点（下标 0）一定是整个堆的最大值</strong>。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+function heapify(arr, n, root):
+    largest = root
+    left = 2 * root + 1
+    right = 2 * root + 2
+    if left &lt; n and arr[left] &gt; arr[largest]:
+        largest = left
+    if right &lt; n and arr[right] &gt; arr[largest]:
+        largest = right
+    if largest != root:
+        swap(arr[root], arr[largest])
+        heapify(arr, n, largest)   // 递归堆化受影响的子树
+
+function heapSort(arr, n):
+    // 第一步：建堆
+    for i = n/2 - 1 downto 0:
+        heapify(arr, n, i)
+    // 第二步：逐次弹出
+    for i = n-1 downto 1:
+        swap(arr[0], arr[i])      // 最大值到末尾
+        heapify(arr, i, 0)        // 重新堆化
+</code></pre>
+<p>下面用流程图拆解这段伪代码的建堆、堆化和排序主循环。</p>
+<h3>工作原理流程图</h3>
+<p>对应伪代码的建堆过程（从最后一个非叶子节点开始自底向上）：</p>
+<div class="mermaid">
+flowchart LR
+    A([开始建堆]) --&gt; B[i = n/2 - 1&lt;br/&gt;最后一个非叶子节点]
+    B --&gt; C{i &gt;= 0 ?}
+    C --&gt;|否| D([建堆完成])
+    C --&gt;|是| E[heapify(arr, n, i)&lt;br/&gt;以 i 为根堆化]
+    E --&gt; F[--i]
+    F --&gt; C
+</div>
+<p>堆化（sift down，下沉操作）：</p>
+<div class="mermaid">
+flowchart TB
+    subgraph 堆化[&quot; &quot;]
+        direction TB
+        A1([以 root 为根]) --&gt; B1{左孩子存在 且 左 &gt; largest ?}
+        B1 --&gt;|是| C1[largest = 左]
+        B1 --&gt;|否| D1{右孩子存在 且 右 &gt; largest ?}
+        C1 --&gt; D1
+        D1 --&gt;|是| E1[largest = 右]
+        D1 --&gt;|否| F1[largest 不变]
+        E1 --&gt; G1{largest != root ?}
+        F1 --&gt; G1
+        G1 --&gt;|是| H1[交换 root 与 largest&lt;br/&gt;递归堆化被影响的子树]
+        H1 --&gt; I1([完成])
+        G1 --&gt;|否| I1
+    end
+</div>
+<p>排序主循环：</p>
+<div class="mermaid">
+flowchart LR
+    A([&quot;建堆完成&quot;]) --&gt; B[&quot;i = n - 1&quot;]
+    B --&gt; C{&quot;i &gt; 0 ?&quot;}
+    C --&gt;|否| Z([&quot;排序完成&quot;])
+    C --&gt;|是| D[&quot;交换 arr[0] 与 arr[i]&lt;br/&gt;最大值落位到 i&quot;]
+    D --&gt; E[&quot;heapify(arr, i, 0)&lt;br/&gt;对缩小后的堆重新堆化&quot;]
+    E --&gt; F[&quot;--i&quot;]
+    F --&gt; C
+</div>
+<h3>逐趟演示</h3>
+<p>用 <code>[9, 4, 7, 1, 3, 6, 8, 2, 5]</code>（n=9）跑一遍：</p>
+<pre><code>初始数组: [9, 4, 7, 1, 3, 6, 8, 2, 5]
+
+--- 第一步: 建堆 ---
+建堆完成(大顶堆): [9, 5, 8, 4, 3, 6, 7, 2, 1]
+  (此时根节点 9 是最大值)
+
+--- 第二步: 逐次弹出 ---
+弹出 9 到位置 8, 堆=[8,5,7,4,3,6,1,2] 已排=[9]
+弹出 8 到位置 7, 堆=[7,5,6,4,3,2,1]   已排=[8,9]
+弹出 7 到位置 6, 堆=[6,5,2,4,3,1]     已排=[7,8,9]
+弹出 6 到位置 5, 堆=[5,4,2,1,3]       已排=[6,7,8,9]
+弹出 5 到位置 4, 堆=[4,3,2,1]         已排=[5,6,7,8,9]
+弹出 4 到位置 3, 堆=[3,1,2]           已排=[4,5,6,7,8,9]
+弹出 3 到位置 2, 堆=[2,1]             已排=[3,4,5,6,7,8,9]
+弹出 2 到位置 1, 堆=[1]               已排=[2,3,4,5,6,7,8,9]
+
+最终结果: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+总比较: 31 | 总交换: 21
+</code></pre>
+<p>每轮把当前最大值从堆顶"弹"到数组末尾，堆的范围缩小一位。</p>
+<p>整个过程不需要任何额外数组。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>空间严格受限</strong></td>
+<td>O(1) 额外空间，不像归并要 O(n)</td>
+</tr>
+<tr>
+<td><strong>需要保证 O(n log n) 上界</strong></td>
+<td>不会像快排那样退化到 O(n²)</td>
+</tr>
+<tr>
+<td><strong>实时系统/嵌入式</strong></td>
+<td>无递归（可写成迭代版本）、性能可预测</td>
+</tr>
+<tr>
+<td><strong>求 Top K 问题</strong></td>
+<td>只需建堆 + 弹出 K 次，不需要全排序</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>不稳定</strong></td>
+<td>堆化时的长距离交换破坏相等元素的顺序</td>
+</tr>
+<tr>
+<td><strong>常数因子较大</strong></td>
+<td>实际速度通常不如快排（尤其是缓存不友好）</td>
+</tr>
+<tr>
+<td><strong>不是自适应的</strong></td>
+<td>对近有序的数据没有优化，始终 O(n log n)</td>
+</tr>
+</tbody>
+</table>
+<h3>与快排/归并的横向对比</h3>
+<table>
+<thead>
+<tr>
+<th>特征</th>
+<th>快速排序</th>
+<th>归并排序</th>
+<th>堆排序</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>平均时间</td>
+<td>O(n log n)</td>
+<td>O(n log n)</td>
+<td>O(n log n)</td>
+</tr>
+<tr>
+<td>最坏时间</td>
+<td>O(n²)</td>
+<td>O(n log n)</td>
+<td><strong>O(n log n)</strong></td>
+</tr>
+<tr>
+<td>空间</td>
+<td>O(log n) 栈</td>
+<td>O(n) 数组</td>
+<td><strong>O(1)</strong></td>
+</tr>
+<tr>
+<td>稳定</td>
+<td>否</td>
+<td>是</td>
+<td>否</td>
+</tr>
+<tr>
+<td>缓存友好</td>
+<td>高</td>
+<td>中</td>
+<td>低（跳跃访问）</td>
+</tr>
+<tr>
+<td>实际速度</td>
+<td>最快</td>
+<td>中等</td>
+<td>较慢</td>
+</tr>
+</tbody>
+</table>
+<p>堆排序的独特价值：<strong>O(n log n) + O(1) 空间</strong> 这个组合只有它能做到（在比较类排序中）。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>时间复杂度怎么算</h3>
+<p><strong>建堆的时间复杂度：O(n)</strong></p>
+<p>这不是显而易见的。</p>
+<p>虽然单次 heapify 是 O(log n)，但不同层的节点数不同：</p>
+<ul>
+<li>底层节点多但 heapify 路径短（几乎不做事）</li>
+<li>顶层节点少但路径长</li>
+</ul>
+<p>精确计算：∑(n/2^(h+1)) × O(h) = O(n)。</p>
+<p>这是一个经典的结论：建堆是线性时间。</p>
+<p><strong>排序阶段的时间复杂度：O(n log n)</strong></p>
+<p>循环 n-1 次，每次 heapify 最多 O(log n)（堆的高度），总计： <strong>O(n log n)</strong>。</p>
+<p>由于建堆 O(n) 被 O(n log n) 吞没，总复杂度 = <strong>O(n log n)</strong>。</p>
+<p>而且这个复杂度是<strong>固定的</strong>。</p>
+<p>不管输入是什么分布，堆排序都是 O(n log n)。</p>
+<p>程序验证：</p>
+<table>
+<thead>
+<tr>
+<th>输入</th>
+<th>比较</th>
+<th>交换</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一般乱序（9 个元素）</td>
+<td>31</td>
+<td>21</td>
+</tr>
+<tr>
+<td>已有序（5 个元素）</td>
+<td>12</td>
+<td>10</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>时间复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好</td>
+<td><strong>O(n log n)</strong></td>
+</tr>
+<tr>
+<td>最坏</td>
+<td><strong>O(n log n)</strong></td>
+</tr>
+<tr>
+<td>平均</td>
+<td><strong>O(n log n)</strong></td>
+</tr>
+</tbody>
+</table>
+<h3>空间复杂度怎么算</h3>
+<p>如果 heapify 用递归实现，栈空间 O(log n)。</p>
+<p>改成迭代版本后，只用几个标量变量 → <strong>O(1)</strong>。</p>
+<p>📌 小结算法：<strong>时间 O(n log n)（三档一致）、空间 O(1)、不稳定、原地、最坏情况仍保证 O(n log n)</strong>。</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：先建大顶堆（线性时间），再反复将堆顶（最大值）交换到末尾并重新堆化。</li>
+<li><strong>解决什么 / 用在哪</strong>：空间受限场景的 O(n log n) 排序，Top K 问题，嵌入式/实时系统的可靠选择。</li>
+<li><strong>局限</strong>：不稳定，缓存不友好导致实际速度不如快排，对近有序数据没有优化。</li>
+<li><strong>复杂度怎么算</strong>：建堆 O(n)（精确推导，非直觉的线性），排序阶段 n 轮 × 每次 O(log n) 堆化 = O(n log n)。三档一致，不会退化。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
