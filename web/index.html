@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Artificer老王的学习笔记</title>
+    <link rel="icon" type="image/jpeg" href="./images/site-logo.jpg" />
     <link rel="stylesheet" href="./style/main.css?v=20260731f">
     <link rel="stylesheet" href="./style/article.css?v=20260731a">
 </head>
@@ -17,7 +18,10 @@
         <div class="site" :class="{ 'site--article': view === 'article' }">
             <header class="site-header">
                 <div class="site-header__inner">
-                    <a class="site-brand" href="#/" @click.prevent="goHome">Artificer老王的学习笔记</a>
+                    <a class="site-brand" href="#/" @click.prevent="goHome">
+                        <img class="site-brand__logo" src="./images/site-logo.jpg" alt="Artificer老王的学习笔记" decoding="async" />
+                        Artificer老王的学习笔记
+                    </a>
 
                     <nav class="site-tabs" aria-label="文章分类">
                         <button type="button" class="site-tab" :class="{ 'is-active': activeCategory === 'all' }"
@@ -104,6 +108,26 @@
                 </main>
 
                 <aside class="contact-rail" aria-label="联系方式">
+                    <div class="contact-rail__card contact-rail__wechat-personal">
+                        <div class="contact-rail__row">
+                            <span class="contact-rail__label">
+                                <svg class="contact-rail__icon" viewBox="0 0 24 24" aria-hidden="true"
+                                    fill="currentColor">
+                                    <path
+                                        d="M8.691 2.188C3.891 2.188 0 5.476 0 9.53c0 2.212 1.17 4.203 3.002 5.55a.59.59 0 0 1 .213.565l-.126.945a.59.59 0 0 0 .856.623l.78-.375a.59.59 0 0 1 .567-.006c.848.32 1.78.49 2.76.49.128 0 .254-.004.38-.012a5.85 5.85 0 0 1-.592-2.54c0-3.52 3.31-6.38 7.39-6.38.16 0 .318.006.475.016C18.84 5.98 14.69 2.188 8.691 2.188Zm-2.4 4.31a1.05 1.05 0 1 1 0 2.1 1.05 1.05 0 0 1 0-2.1Zm4.8 0a1.05 1.05 0 1 1 0 2.1 1.05 1.05 0 0 1 0-2.1Z" />
+                                    <path
+                                        d="M24 14.97c0-3.638-3.453-6.59-7.71-6.59-4.258 0-7.71 2.952-7.71 6.59 0 3.64 3.452 6.59 7.71 6.59.918 0 1.8-.158 2.598-.452a.59.59 0 0 1 .572.014l.69.355a.59.59 0 0 0 .857-.585l-.118-.886a.59.59 0 0 1 .222-.564A6.54 6.54 0 0 0 24 14.97Zm-10.84-1.22a.91.91 0 1 1 0 1.82.91.91 0 0 1 0-1.82Zm5.07 0a.91.91 0 1 1 0 1.82.91.91 0 0 1 0-1.82Z" />
+                                </svg>
+                                微信交流
+                            </span>
+                        </div>
+                        <p class="contact-rail__personal-tip">添加微信，与我直接交流</p>
+                        <div class="contact-rail__qr">
+                            <img src="./images/writer-wechat.jpg" alt="个人微信二维码" decoding="async"
+                                onerror="this.style.display='none'" />
+                        </div>
+                    </div>
+
                     <div class="contact-rail__card">
                         <div class="contact-rail__row">
                             <span class="contact-rail__label">
