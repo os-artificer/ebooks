@@ -208,6 +208,11 @@
           "href": "./page/algorithm/bubble-sort.html",
           "text": "C++ 排序算法实践：冒泡排序——相邻比较，大数后移",
           "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 12 分钟"
+        },
+        {
+          "href": "./page/algorithm/bucket-sort.html",
+          "text": "C++ 排序算法实践：桶排序——分而治之，各桶归位",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 10 分钟"
         }
       ]
     },

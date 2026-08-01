@@ -32,7 +32,7 @@ void bucketSortDemo(std::vector<double> arr) {
         std::cout << "  " << arr[i] << " -> 桶[" << bucketIdx << "]\n";
     }
 
-    // Step 2: 各桶内部排序（用插入排序）
+    // Step 2: 各桶内部排序（演示用 std::sort 简化；元素少时插入排序更优）
     std::cout << "\nStep 2 - 各桶内排序:\n";
     for (int i = 0; i < bucketCount; ++i) {
         if (!buckets[i].empty()) {

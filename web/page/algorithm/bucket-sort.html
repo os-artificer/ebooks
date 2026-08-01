@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：桶排序——分而治之，各桶归位</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：桶排序——分而治之，各桶归位</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 10 分钟</p>
+<p>假设你有一堆 0 到 1 之间的小数要排序。</p>
+<p>与其两两比较，不如准备 10 个桶，分别装 [0, 0.1)、[0.1, 0.2)…… [0.9, 1.0) 的数。</p>
+<p>每个桶里的数不多，简单排一下就行。</p>
+<p>最后按桶号从 0 到 9 把所有桶里的数依次倒出来，这样全局就有序了。</p>
+<p><strong>桶排序（Bucket Sort）</strong> 就是这个思路：把数据均匀分配到若干个桶里，各桶内部单独排序，最后合并所有桶。</p>
+<p>它是计数排序的"泛化版本"，计数排序相当于每个桶只装一种值，桶排序则允许一个桶装一个范围的值。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p><strong>将数据按规则分配到多个桶中，使得落在同一个桶内的数据范围较小且有序关系简单；对各桶分别排序后，按桶序合并即得全局有序结果。</strong></p>
+<p>分类整理：先把东西粗略归类到不同篮子里，然后在每个篮子内部再细排。 </p>
+<p>桶排序的关键就在于<strong>均匀分布</strong>。</p>
+<p>如果数据均匀分散到各个桶里，每个桶的数据量就会很小，桶内排序的成本就极低。</p>
+<h3>与计数排序的关系</h3>
+<table>
+<thead>
+<tr>
+<th>特征</th>
+<th>计数排序</th>
+<th>桶排序</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>每个桶装什么</td>
+<td>只装<strong>相同值</strong>的元素</td>
+<td>装<strong>一定范围内</strong>的所有值</td>
+</tr>
+<tr>
+<td>桶内操作</td>
+<td>无需排序（直接输出）</td>
+<td>需要<strong>排序</strong>（桶内元素少时插入排序更优）</td>
+</tr>
+<tr>
+<td>适用数据</td>
+<td>整数，范围小</td>
+<td>浮点数或均匀分布的数据</td>
+</tr>
+<tr>
+<td>时间</td>
+<td>O(n+k)</td>
+<td>平均 O(n)，最坏 O(n log n)</td>
+</tr>
+<tr>
+<td>稳定性</td>
+<td>取决于实现</td>
+<td>取决于桶内排序算法</td>
+</tr>
+</tbody>
+</table>
+<p>可以把计数排序看作桶排序的一个特例：桶的数量 = 数据范围，每个桶只存一个值。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意（针对 [0,1) 范围浮点数）
+function bucketSort(arr, n):
+    创建 n 个空桶 buckets[0..n-1]
+
+    // Step 1: 分桶
+    for each x in arr:
+        idx = floor(x * n)
+        buckets[idx].append(x)
+
+    // Step 2: 各桶内排序
+    for each bucket in buckets:
+        if bucket 不空:
+            // 桶内元素少时插入排序更优，演示代码用 std::sort 简化
+            sort(bucket)         
+
+    // Step 3: 合并
+    result = []
+    for i = 0 to n-1:
+        result.extend(buckets[i])
+
+    return result
+</code></pre>
+<p>下面用流程图拆解分桶、桶内排序与合并过程。</p>
+<h3>工作原理流程图</h3>
+<p>对应伪代码的整体流程：</p>
+<div class="mermaid">
+flowchart LR
+    A([输入数组 arr]) --&gt; B[创建 k 个空桶&lt;br/&gt;k 通常 = n]
+    B --&gt; C[遍历 arr&lt;br/&gt;arr[i] 放入第 floor(arr[i]*k) 个桶]
+    C --&gt; D[对每个非空桶独立排序&lt;br/&gt;桶内少时插入排序更优]
+    D --&gt; E[按桶 0,1,...,k-1 顺序&lt;br/&gt;合并所有桶内元素]
+    E --&gt; F([输出有序数组])
+</div>
+<h3>逐步演示</h3>
+<p>用 <code>[0.78, 0.17, 0.39, 0.26, 0.72, 0.94, 0.21, 0.12, 0.23, 0.68]</code>（n=10，10 个桶）跑一遍：</p>
+<pre><code>初始数组 (10 个元素, 范围 [0,1)): [0.78, 0.17, 0.39, 0.26, 0.72, 0.94, 0.21, 0.12, 0.23, 0.68]
+
+Step 1 - 分桶:
+  0.78 -&gt; 桶[7]    0.17 -&gt; 桶[1]    0.39 -&gt; 桶[3]
+  0.26 -&gt; 桶[2]    0.72 -&gt; 桶[7]    0.94 -&gt; 桶[9]
+  0.21 -&gt; 桶[2]    0.12 -&gt; 桶[1]    0.23 -&gt; 桶[2]
+  0.68 -&gt; 桶[6]
+
+Step 2 - 各桶内排序:
+  桶[1]: [0.12, 0.17]        (2 个元素)
+  桶[2]: [0.21, 0.23, 0.26]   (3 个元素)
+  桶[3]: [0.39]               (1 个元素)
+  桶[6]: [0.68]               (1 个元素)
+  桶[7]: [0.72, 0.78]         (2 个元素)
+  桶[9]: [0.94]               (1 个元素)
+
+Step 3 - 按桶顺序合并:
+最终结果: [0.12, 0.17, 0.21, 0.23, 0.26, 0.39, 0.68, 0.72, 0.78, 0.94]
+</code></pre>
+<p>每个桶平均只有 1-3 个元素，桶内仅常数个元素，排序成本接近 O(1)。</p>
+<p>总工作量接近线性。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>浮点数均匀分布</strong></td>
+<td>经典应用场景，如 [0,1) 均匀分布的小数</td>
+</tr>
+<tr>
+<td><strong>已知大致分布的数据</strong></td>
+<td>可以据此设计桶的范围和数量</td>
+</tr>
+<tr>
+<td><strong>外部排序的预处理</strong></td>
+<td>大文件可以先分桶，各桶独立排序后合并</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>依赖数据分布</strong></td>
+<td>如果数据集中在一个桶里，退化为对该桶的全排序</td>
+</tr>
+<tr>
+<td><strong>额外的桶管理开销</strong></td>
+<td>需要维护多个容器</td>
+</tr>
+<tr>
+<td><strong>不是原地排序</strong></td>
+<td>需要额外的桶空间</td>
+</tr>
+<tr>
+<td><strong>稳定性不确定</strong></td>
+<td>取决于桶内使用的排序算法</td>
+</tr>
+</tbody>
+</table>
+<h3>退化场景演示</h3>
+<p>如果数据高度集中：</p>
+<pre><code>退化数据: [0.01, 0.02, 0.03, 0.04, 0.05, 0.91, 0.92, 0.93, 0.94, 0.95]
+
+分桶结果:
+  桶[0]: [0.01, 0.02, 0.03, 0.04, 0.05]   (5 个元素!)
+  桶[9]: [0.91, 0.92, 0.93, 0.94, 0.95]   (5 个元素!)
+
+此时桶内排序的工作量 ≈ 对 5 个元素做全排序
+</code></pre>
+<p>虽然这个例子中退化后仍然可控，但如果 n=100 万且全部集中在 1 个桶里，就退化为对全量数据的常规排序了（std::sort 为 O(n log n)，插入排序为 O(n²)）。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>时间复杂度怎么算</h3>
+<p>分三步计算：</p>
+<table>
+<thead>
+<tr>
+<th>步骤</th>
+<th>操作</th>
+<th>平均复杂度</th>
+<th>最坏复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分桶</td>
+<td>遍历 + 计算</td>
+<td>O(n)</td>
+<td>O(n)</td>
+</tr>
+<tr>
+<td>桶内排序</td>
+<td>取决于桶内元素数</td>
+<td><strong>O(n)</strong>（均匀时每桶 O(1)）</td>
+<td><strong>O(n log n)</strong>（std::sort）/ O(n²)（插入排序）</td>
+</tr>
+<tr>
+<td>合并</td>
+<td>遍历所有桶</td>
+<td>O(n)</td>
+<td>O(n)</td>
+</tr>
+</tbody>
+</table>
+<p><strong>平均情况（数据均匀分布）：</strong>
+每个桶期望有 n/k = O(1) 个元素（设 k=n），桶内排序接近常数时间 → 总计 <strong>O(n)</strong>。</p>
+<p><strong>最坏情况（所有元素进同一桶）：</strong>
+退化为对单个桶做全量排序。若桶内用 <strong>std::sort</strong>（演示代码做法），最坏 <strong>O(n log n)</strong>；若桶内用<strong>插入排序</strong>（元素少时更优），最坏 <strong>O(n²)</strong>。</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>时间复杂度</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好</td>
+<td><strong>O(n)</strong></td>
+<td>每桶 ≤ 1 个元素</td>
+</tr>
+<tr>
+<td>平均</td>
+<td><strong>O(n)</strong></td>
+<td>数据均匀分布</td>
+</tr>
+<tr>
+<td>最坏</td>
+<td><strong>O(n log n)</strong>（std::sort）/ <strong>O(n²)</strong>（插入排序）</td>
+<td>所有元素落入同一桶</td>
+</tr>
+</tbody>
+</table>
+<h3>空间复杂度</h3>
+<p>n 个桶 + n 个元素的总副本 → <strong>O(n + k)</strong>，其中 k 为桶数（通常 k=n）→ <strong>O(n)</strong>。</p>
+<p>📌 小结算法：<strong>时间平均 O(n)（最坏 O(n log n)，用插入排序则为 O(n²)）、空间 O(n)、稳定性取决于桶内排序、适用于均匀分布的数据</strong>。</p>
+<hr />
+<h2>📌 全文小结</h2>
+<ul>
+<li><strong>是什么</strong>：按映射规则把数据分到若干桶，各桶独立排序后合并。是计数排序的泛化版。</li>
+<li><strong>解决什么 / 用在哪</strong>：均匀分布的浮点数排序；已知分布数据的快速排序；外部排序预处理。</li>
+<li><strong>局限</strong>：数据分布不均时退化；稳定性取决于桶内算法；需要额外桶空间。</li>
+<li><strong>复杂度怎么算</strong>：分桶 O(n) + 合并 O(n) 固定；桶内排序决定总复杂度。均匀时 O(n)，最坏 O(n log n)（std::sort）或 O(n²)（插入排序）。空间 O(n)。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
