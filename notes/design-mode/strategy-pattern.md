@@ -2,9 +2,9 @@
 
 作者：Artificer老王  |  更新时间：2026-07-30  |  阅读时长：约 13 分钟
 
-你有没有写过这样的代码：一个类里根据 `type` 字段用一长串 `if-else` 或 `switch` 选不同算法——排序用快排还是堆排、压缩用 gzip 还是 zip、折扣用满减还是打折、导航用最短路径还是躲避拥堵。每加一种算法，就得在十几个函数里各加一个分支？
+你有没有写过这样的代码：一个类里根据 `type` 字段用一长串 `if-else` 或 `switch` 选不同算法——排序用快排还是堆排、压缩用 gzip 还是 zip、折扣用满减还是打折、导航用最短路径还是躲避拥堵？每加一种算法，就得在十几个地方各加一个分支？
 
-你有没有遇过这种尴尬：算法实现散落在 N 个分支里，测试要覆盖每种组合，改一个算法怕牵动其他分支，加一个新算法得翻遍整个类。
+更麻烦的是，算法实现散落在 N 个分支里，测试要覆盖每种组合，改一个算法怕牵动其他分支，加一个新算法就得翻遍整个类。
 
 **策略模式（Strategy Pattern）** 就是专门收拾这种"一族算法要可互换、可切换"场面的——它把一族算法分别封装成独立、可互换的策略对象，让算法的变化独立于使用它的客户端，客户端要换算法时，只换一个策略对象即可。
 
@@ -63,7 +63,7 @@ public:
 
 策略模式只有三个角色，关系非常清晰：
 
-- **Strategy（策略接口）**：定义这族算法的统一接口（一个纯虚函数，比如 `calc()`）。所有具体算法都实现它。
+- **Strategy（策略接口）**：定义这族算法的统一接口（一组纯虚函数，如 `calc()`、`name()`）。所有具体算法都实现它。
 - **ConcreteStrategy（具体策略）**：实现 `Strategy` 接口的具体算法，比如"打折""满减""直减"。各自独立、互不相识。
 - **Context（上下文）**：持有一个 `Strategy` 引用，把"需要算法"的请求委派给它；自身不关心算法细节，只管换策略、调策略。
 
@@ -75,7 +75,7 @@ public:
 
 下面是策略模式的结构类图。
 
-`Order`（Context）持有 `DiscountStrategy`（Strategy）的引用；四个具体策略各自实现 `Strategy`；运行时 `Order` 把 `checkout()` 委派给当前持有的策略。
+`Order`（Context）持有 `DiscountStrategy`（Strategy）；四个具体策略各自实现 `Strategy`；运行时 `Order` 把 `checkout()` 委派给当前持有的策略。
 
 ```mermaid
 classDiagram
@@ -226,7 +226,7 @@ public:
 };
 ```
 
-核心模式就这几行：**Strategy 定义统一接口、ConcreteStrategy 各自实现、Context 持有引用并把请求委派过去**。
+核心模式就这几行：**Strategy 定义统一接口、ConcreteStrategy 各自实现、Context 持有策略并把请求委派过去**。
 
 ### 关键实现决策
 
@@ -393,7 +393,8 @@ checkoutWith(200.0, [](double p){ return p * 0.8; });   // 8 折
 checkoutWith(200.0, [](double p){ return p >= 100 ? p - 20 : p; }); // 满减
 ```
 
-好处：写法极轻、无类型膨胀、lambda 捕获还能顺带带点局部状态。代价：失去了"统一基类"带来的内省（如 `name()`）、且每个 `std::function` 有轻微间接开销。
+好处：写法极轻、无类型膨胀、lambda 捕获还能携带局部状态。
+代价：失去了"统一基类"带来的内省（如 `name()`）、且每个 `std::function` 有轻微间接开销。
 
 ### 用 std::variant 替代虚函数（C++17）
 
@@ -409,7 +410,8 @@ double apply(Strategy s, double p) {
 }
 ```
 
-好处：策略是值、能放进数组/栈、拷贝便宜、编译器还能内联。代价：策略集合在编译期固定（加一个新策略要改 `using Strategy = ...` 那一行），适合"算法族有限且稳定"的场景。
+好处：策略是值、能放进数组/栈、拷贝便宜、编译器还能内联。
+代价：策略集合在编译期固定（加一个新策略要改 `using Strategy = ...` 那一行），适合"算法族有限且稳定"的场景。
 
 ### 策略与"模板方法""状态"的边界
 
@@ -434,7 +436,7 @@ std::unique_ptr<DiscountStrategy> makeDiscount(const std::string& name) {
 }
 ```
 
-好处：新增算法只需在工厂里加一行映射，调用方完全解耦于具体类；配合上面的 `std::variant` 还能把"按名选"和"值语义"合起来用。
+好处：新增算法只需在工厂里加一行映射，调用方完全解耦于具体类；如果策略集合有限且稳定，还可以让工厂返回 `std::variant`，同时享受"按名选"和"值语义"两种好处。
 
 ---
 
@@ -450,8 +452,8 @@ std::unique_ptr<DiscountStrategy> makeDiscount(const std::string& name) {
 
 ---
 
-**完整可运行示例代码**：本文所有代码均已上传至 GitHub 仓库 [os-artificer/ebooks](https://github.com/os-artificer/ebooks)，位于 `src/cpp/design-mode/` 目录。
-进入 `src/cpp/` 目录执行 `make bin/strategy_demo` 即可编译本示例（或执行 `make` 编译全部示例）。
+**完整可运行示例代码**：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 `src/cpp/design-mode/` 目录。
+
 文中的代码片段为**说明原理的伪代码**，正式可编译版本请查看 `src/cpp/design-mode/` 下对应的 `.cpp` 文件。
 
 本文首发于公众号 **Artificer老王的学习笔记**，转载请注明出处。

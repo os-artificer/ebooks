@@ -88,6 +88,11 @@
           "href": "./page/design-mode/state-pattern.html",
           "text": "C++ 设计模式实践：状态机模式——从 if-else 地狱到优雅的状态封装",
           "excerpt": "作者：Artificer老王 | 更新时间：2026-07-26 | 阅读时长：约 15 分钟"
+        },
+        {
+          "href": "./page/design-mode/strategy-pattern.html",
+          "text": "C++ 设计模式实践：策略模式——把\"选算法\"交给运行时",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-07-30 | 阅读时长：约 13 分钟"
         }
       ]
     },
