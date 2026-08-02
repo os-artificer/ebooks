@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：基数排序——逐位分配，按位收集</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：基数排序——逐位分配，按位收集</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 11 分钟</p>
+<p>现在你要给一堆身份证号进行排序，如何做呢？</p>
+<p>不需要两两比较大小，只需要这么做。</p>
+<p>先按最后一位数字分组（0~9 共 10 组），组内保持原始顺序收集回来。</p>
+<p>再按倒数第二位分组... 一直处理到最高位。</p>
+<p>整个过程下来，号码就全局有序了。</p>
+<p><strong>基数排序（Radix Sort）</strong> 就是这个思路：从最低位到最高位，每一轮用稳定的"分配-收集"过程按当前位处理。它属于非比较排序，每一轮通常用计数排序作为内层稳定排序。对于固定位宽的整数，时间复杂度可以达到 O(d × n)，d 是位数。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p><strong>按位处理：从最低位（LSD）到最高位，每一轮根据当前位的值把元素分配到 0~9 号桶中，然后按桶号顺序收集回来。经过 d 轮（d=最大位数）后，数组全局有序。</strong></p>
+<p>像邮局分拣信件：先按最后一位邮编分，再按倒数第二位... 最后按第一位。</p>
+<p>关键在于<strong>每轮必须使用稳定排序</strong>，否则低位排好的顺序会被高位打乱。</p>
+<h3>为什么从低位开始（LSD）</h3>
+<p>这是最常见的基数排序变体（LSD Radix Sort）。</p>
+<p>从低位到高位处理的理由：</p>
+<ol>
+<li><strong>低位先排好，高位后来覆盖</strong>：高位相同时，低位已经决定了正确顺序</li>
+<li><strong>不需要比较位数长短</strong>：短位数自然在高位上补 0，不影响排序</li>
+<li><strong>每轮逻辑一致</strong>：都是"按当前位分配-收集"</li>
+</ol>
+<p>另一种变体 MSD（从高位开始）也可以，但处理起来更复杂（需要对每个桶递归执行基数排序）。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+function radixSort(arr):
+    maxDigits = 最大元素的位数
+    for d = 1 to maxDigits:           // 从个位到最高位
+        创建 10 个空桶 buckets[0..9]
+        for each x in arr:
+            digit = getDigit(x, d)     // 取第 d 位数字
+            buckets[digit].append(x)
+        // 按 0-&gt;9 顺序收集
+        arr = concat(buckets[0..9])
+    return arr
+</code></pre>
+<p><code>getDigit(x, d)</code> 的实现：<code>(x / 10^(d-1)) % 10</code>。</p>
+<p>下面用流程图拆解逐位处理的主循环与单轮分配收集。</p>
+<h3>工作原理流程图</h3>
+<p>对应伪代码的主循环（逐位处理）：</p>
+<div class="mermaid">
+flowchart LR
+    A([输入数组]) --&gt; B[d = 1&lt;br/&gt;从个位开始]
+    B --&gt; C{ d &lt;= maxDigits ? }
+    C --&gt;|否| Z([排序完成])
+    C --&gt;|是| D[创建 10 个空桶]
+    D --&gt; E[遍历数组&lt;br/&gt;按第 d 位放入对应桶]
+    E --&gt; F[按桶 0-&gt;9 顺序收集回数组]
+    F --&gt; G[++d]
+    G --&gt; C
+</div>
+<p>单轮分配-收集：</p>
+<div class="mermaid">
+flowchart LR
+    A([取当前位数字 digit]) --&gt; B[&quot;放入 buckets[digit]&quot;]
+    B --&gt; C{还有元素?}
+    C --&gt;|是| A
+    C --&gt;|否| D[&quot;output = []&quot;]
+    D --&gt; E[bucket = 0]
+    E --&gt; F{bucket &lt; 10 ?}
+    F --&gt;|否| H([本轮完成])
+    F --&gt;|是| G[&quot;output.extend(buckets[bucket])&quot;]
+    G --&gt; I[++bucket]
+    I --&gt; F
+</div>
+<h3>逐轮演示</h3>
+<p>用 <code>[170, 45, 75, 90, 802, 24, 2, 66]</code> 跑一遍 LSD 基数排序（最大 802 有 3 位，共 3 轮）：</p>
+<pre><code>初始数组: [170, 45, 75, 90, 802, 24, 2, 66]
+最大位数: 3
+
+--- 第 1 轮（个位）---
+  分配: 桶0:[170,90] | 桶2:[802,2] | 桶4:[24] | 桶5:[45,75] | 桶6:[66]
+  收集: [170, 90, 802, 2, 24, 45, 75, 66]
+
+--- 第 2 轮（十位）---
+  分配: 桶0:[802,2] | 桶2:[24] | 桶4:[45] | 桶6:[66] | 桶7:[170,75] | 桶9:[90]
+  收集: [802, 2, 24, 45, 66, 170, 75, 90]
+
+--- 第 3 轮（百位）---
+  分配: 桶0:[2,24,45,66,75,90] | 桶1:[170] | 桶8:[802]
+  收集: [2, 24, 45, 66, 75, 90, 170, 802]
+
+最终结果: [2, 24, 45, 66, 75, 90, 170, 802]
+</code></pre>
+<p>注意观察：每轮结束后数组并不是全局有序的（比如第 1 轮后 170 排到了最前面），但经过所有位数处理后最终有序。</p>
+<p>这就是"低位到高位"策略的工作方式——每次只排一位，多轮叠加后自然归位。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>固定位宽整数排序</strong></td>
+<td>如 32 位 int、64 位 long、电话号码、身份证号</td>
+</tr>
+<tr>
+<td><strong>字符串排序</strong></td>
+<td>可按字符逐位处理（ASCII/Unicode）</td>
+</tr>
+<tr>
+<td><strong>大数据量但位数少</strong></td>
+<td>如 n=100 万但数值 &lt; 10000（4 位），只需 4 轮</td>
+</tr>
+<tr>
+<td><strong>需要稳定线性时间</strong></td>
+<td>某些数据库索引构建场景</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>只适用于可按位分解的类型</strong></td>
+<td>浮点数需要特殊处理（IEEE 754 位模式）</td>
+</tr>
+<tr>
+<td><strong>位数 d 不能太大</strong></td>
+<td>如果 d 很大（如 64 位随机整数），可能不如快排</td>
+</tr>
+<tr>
+<td><strong>不是原地排序</strong></td>
+<td>需要 10 个桶的额外空间</td>
+</tr>
+<tr>
+<td><strong>不支持自定义比较器</strong></td>
+<td>只能按"位"的自然顺序排</td>
+</tr>
+</tbody>
+</table>
+<h3>稳定性</h3>
+<p>基数排序是<strong>稳定的</strong>，前提是每轮的内层排序（分配-收集）是稳定的。</p>
+<p>在我们的实现中，同一位值相同的元素会按原始顺序进入桶，再按桶号顺序依次收集——整个过程保持了元素的相对顺序。</p>
+<p>程序验证：</p>
+<pre><code>原始: (170,a) (45,x) (75,y) (90,b) (802,c) (24,z) (2,d) (66,w)
+排序后: (2,d) (24,z) (45,x) (66,w) (75,y) (90,b) (170,a) (802,c)
+</code></pre>
+<p>这个例子中所有待排序的 key 都不同，没有碰上相等的情况。</p>
+<p>如果扩展测试加入相同 key 的元素，它们的 tag 顺序（即原始顺序）会保持不变——这正是稳定排序的含义。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<p><strong>程序验证</strong>：完整可编译源码位于 <code>src/cpp/algorithm/radix_sort.cpp</code>，编译命令 <code>make bin/radix_sort</code>。</p>
+<p>以下数据均来自程序实际运行输出，使用两组测试数据：</p>
+<ul>
+<li>演示数据：<code>[170, 45, 75, 90, 802, 24, 2, 66]</code>（共 3 位，3 轮）</li>
+<li>较大数据集：<code>[329, 457, 657, 839, 436, 720, 355]</code></li>
+</ul>
+<h3>时间复杂度怎么算</h3>
+<p>设 n = 元素个数，d = 最大位数，k = 基数（十进制 k=10）。</p>
+<p>每一轮的操作：</p>
+<ul>
+<li>分配：遍历 n 个元素 → O(n)</li>
+<li>收集：遍历 10 个桶 → O(k)（k 是常数 10）</li>
+<li>单轮总计：O(n)</li>
+</ul>
+<p>共 d 轮 → <strong>O(d × (n + k)) = O(d × n)</strong>（因为 k=10 是常数）</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>时间复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一般</td>
+<td><strong>O(d × n)</strong></td>
+</tr>
+<tr>
+<td>当 d 是常数时（如 int32 最多 10 位）</td>
+<td><strong>O(n)</strong></td>
+</tr>
+<tr>
+<td>当 d ~ log_n(U)（U=值域上限）</td>
+<td><strong>O(n log_n U)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>拿具体数字感受一下：如果 n=100 万，int32 最多 10 位，基数排序约 1000 万次操作。</p>
+<p>同样的数据快排约 2000 万次比较（n log n）。</p>
+<p>在这个量级上基数排序往往更快。</p>
+<h3>空间复杂度</h3>
+<p>10 个桶 + 存放所有元素的副本 → <strong>O(n + k) = O(n)</strong>（k=10 是常数）</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：从最低位到最高位，每轮按当前位做稳定的分配-收集。d 轮后全局有序。</li>
+<li><strong>解决什么 / 用在哪</strong>：固定位宽整数/字符串的大规模排序；电话号码、ID 排序等场景；需要稳定线性时间时。</li>
+<li><strong>局限</strong>：只适用于可按位分解的类型；位数太多时不如快排；需要额外桶空间。</li>
+<li><strong>复杂度怎么算</strong>：d 轮 × 每轮 O(n) = O(d×n)。当 d 是常数（如 int32 最多 10 位）时等价于 O(n)。突破了比较排序下界。空间 O(n)。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>

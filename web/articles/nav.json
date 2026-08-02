@@ -233,6 +233,11 @@
           "href": "./page/algorithm/quick-sort.html",
           "text": "C++ 排序算法实践：快速排序——选基准，分区，递归征服",
           "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 13 分钟"
+        },
+        {
+          "href": "./page/algorithm/radix-sort.html",
+          "text": "C++ 排序算法实践：基数排序——逐位分配，按位收集",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 11 分钟"
         }
       ]
     },
