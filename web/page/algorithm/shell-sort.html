@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：希尔排序——分组插入，逐步逼近有序</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：希尔排序——分组插入，逐步逼近有序</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 12 分钟</p>
+<p>插入排序有个明显的短板。</p>
+<p>如果最小的元素排在数组末尾（比如 <code>[9,8,7,6,5,4,3,2,1]</code> 里的那个 1），它只能一步一步往前挪，每轮只走一步，要挪 n-1 步才能到位。</p>
+<p>这就像一条单行道堵车，每次只能前进一格。</p>
+<p>既然一步太慢，那就跨步走。</p>
+<p>先把距离远的元素先排个大概，缩小步长再细排，最后步长为 1 时做一次完整的插入排序收尾。</p>
+<p>这就是<strong>希尔排序（Shell Sort）</strong> 。</p>
+<p>它是第一个突破 O(n²) 的排序算法，由 Donald Shell 在 1959 年提出。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p>按递减的增量序列（gap）把数组分成若干组，每组内部做插入排序。</p>
+<p>gap 逐渐缩小到 1，最后做一次标准插入排序完成最终排序。</p>
+<p>先粗调再精调，远距离的元素先归位到大致正确的区域，近距离的细节最后处理。</p>
+<p>希尔排序本质上是<strong>分组的插入排序</strong>，通过 gap 控制分组的粒度。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+gap = n / 2
+while gap &gt; 0:
+    for i = gap to n-1:
+        temp = arr[i]
+        j = i
+        while j &gt;= gap and arr[j - gap] &gt; temp:
+            arr[j] = arr[j - gap]
+            j = j - gap
+        arr[j] = temp
+    gap = gap / 2
+</code></pre>
+<p>和普通插入排序的区别只有两点：内层循环的步长从 1 变成了 gap；外层多了一层 gap 递减。</p>
+<p>下面用流程图拆解。</p>
+<h3>为什么分组插入更快</h3>
+<p>普通插入排序中，元素每次只能移动 1 个位置。</p>
+<p>希尔排序中，当 gap 很大时，元素一次可以跨越很远：</p>
+<ul>
+<li>gap = n/2 时，相距 n/2 的两个元素可以直接比较和交换</li>
+<li>gap = n/4 时，相距 n/4 的元素可以调整</li>
+<li>...</li>
+<li>gap = 1 时，退化为普通插入排序，但此时数组已经"基本有序"</li>
+</ul>
+<p>"基本有序"正是插入排序的最佳工况（接近 O(n)），所以最后一轮虽然看起来是 O(n²) 的插入排序，实际上跑得飞快。</p>
+<h3>工作原理流程图</h3>
+<p>对应上面伪代码的整体骨架：</p>
+<div class="mermaid">
+flowchart LR
+    A([开始]) --&gt; B[gap = n / 2]
+    B --&gt; C{ gap &gt; 0 ? }
+    C --&gt;|否| Z([结束])
+    C --&gt;|是| D[对每组执行间隔为 gap 的插入排序]
+    D --&gt; E[gap = gap / 2]
+    E --&gt; C
+</div>
+<p>组内插入排序（间隔为 gap）：</p>
+<div class="mermaid">
+flowchart LR
+    A([i 从 gap 到 n-1]) --&gt; B[&quot;temp = arr[i], j = i&quot;]
+    B --&gt; C{j &gt;= gap ?}
+    C --&gt;|否| D[&quot;arr[j] = temp&quot;]
+    D --&gt; E[++i]
+    E --&gt; A
+    C --&gt;|是| F{&quot;arr[j-gap] &gt; temp ?&quot;}
+    F --&gt;|是| G[&quot;arr[j] = arr[j-gap]&lt;br/&gt;j -= gap&quot;]
+    G --&gt; C
+    F --&gt;|否| D
+</div>
+<h3>逐趟演示</h3>
+<p>用 <code>[9, 5, 8, 3, 7, 4, 2, 6, 1]</code>（n=9）跑一遍 Shell 原始增量序列（gap = 4, 2, 1）：</p>
+<pre><code>初始数组: [9, 5, 8, 3, 7, 4, 2, 6, 1]
+
+--- 当前增量 gap = 4 ---
+gap=4 后: [1, 4, 2, 3, 7, 5, 8, 6, 9]
+  分组: (9,7,1) -&gt; [1,7,9]   (5,4) -&gt; [4,5]   (8,2) -&gt; [2,8]   (3,6) -&gt; [3,6]
+
+--- 当前增量 gap = 2 ---
+gap=2 后: [1, 3, 2, 4, 7, 5, 8, 6, 9]
+  分组: (1,2,7,8) -&gt; [1,2,7,8]   (3,4,5,6) -&gt; [3,4,5,6]   (9) -&gt; [9]
+
+--- 当前增量 gap = 1 ---
+gap=1 后: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  退化为标准插入排序，但此时数组已基本有序，很快完成
+
+最终结果: [1, 2, 3, 4, 5, 6, 7, 8, 9]
+</code></pre>
+<p>可以看到 gap=4 这一轮就把 1 从末尾搬到了开头（跨越 8 个位置），而普通插入排序需要 8 轮才能做到。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>中等规模且对递归栈有顾虑的环境（如嵌入式）</strong></td>
+<td>代码简单、常数因子较小，且无栈溢出风险，可作为 <code>std::sort</code> 的替代方案之一</td>
+</tr>
+<tr>
+<td><strong>嵌入式系统</strong></td>
+<td>不需要递归（无栈溢出风险）、内存占用可控</td>
+</tr>
+<tr>
+<td><strong>作为通用排序的实现</strong></td>
+<td>glibc 的 <code>qsort()</code> 在某些情况下会用类似策略</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>不稳定</strong></td>
+<td>相同 gap 的分组插入可能导致相等元素跨组移动</td>
+</tr>
+<tr>
+<td><strong>复杂度依赖增量序列</strong></td>
+<td>不同 gap 序列性能差异很大，没有统一的最优解</td>
+</tr>
+<tr>
+<td><strong>不如快排/归并稳定</strong></td>
+<td>大数据量下 O(n log n) 算法更可靠</td>
+</tr>
+</tbody>
+</table>
+<h3>增量序列的选择</h3>
+<p>Shell 原始序列（n/2, n/4, ..., 1）并不是最优的。几种常见序列对比：</p>
+<table>
+<thead>
+<tr>
+<th>增量序列</th>
+<th>名称</th>
+<th>最坏复杂度</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>n/2, n/4, ..., 1</td>
+<td>Shell 原始</td>
+<td>O(n²)</td>
+<td>最简单，但不是最快</td>
+</tr>
+<tr>
+<td>1, 4, 13, 40, ... (3^k-1)/2</td>
+<td>Knuth</td>
+<td>O(n^1.5)</td>
+<td>常用改进版</td>
+</tr>
+<tr>
+<td>1, 5, 19, 41, 109, ...</td>
+<td>Sedgewick</td>
+<td>O(n^1.25)</td>
+<td>实践中表现很好</td>
+</tr>
+<tr>
+<td>动态计算</td>
+<td>Ciura</td>
+<td>~O(n log n)</td>
+<td>基于实验的最优序列之一</td>
+</tr>
+</tbody>
+</table>
+<p>工程上一般用 Knuth 或 Sedgewick 序列就够了，不必追求理论最优。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>通用 C++ 模板实现</h3>
+<p>补一段可直接复用的代码：</p>
+<pre><code class="language-cpp">template &lt;typename T&gt;
+void shellSort(std::vector&lt;T&gt;&amp; arr) {
+    int n = arr.size();
+    // 使用 Knuth 序列作为示例：1, 4, 13, 40, ...
+    int gap = 1;
+    while (gap &lt; n / 3) gap = gap * 3 + 1;
+
+    while (gap &gt; 0) {
+        for (int i = gap; i &lt; n; ++i) {
+            T temp = std::move(arr[i]);
+            int j = i;
+            while (j &gt;= gap &amp;&amp; arr[j - gap] &gt; temp) {
+                arr[j] = arr[j - gap];
+                j -= gap;
+            }
+            arr[j] = std::move(temp);
+        }
+        gap /= 3;
+    }
+}
+</code></pre>
+<p>文中前面的伪代码使用类似 Python 的语法（<code>for i = gap to n-1</code>）是为了帮助只看原理的读者快速理解。</p>
+<p>工程实践中直接用上面的模板函数即可，支持任意实现了 <code>operator&gt;</code> 的可移动类型。</p>
+<h3>时间复杂度怎么算</h3>
+<p>希尔排序的复杂度分析<strong>依赖于增量序列</strong>，没有一个统一的公式。</p>
+<p>这里给出 Shell 原始序列的分析思路：</p>
+<p><strong>gap 序列长度</strong>：n/2 折半到 1，共 O(log n) 个不同的 gap 值。</p>
+<p><strong>每个 gap 的工作量</strong>：</p>
+<ul>
+<li>gap 较大时，每组元素少，组内插入排序快</li>
+<li>gap 较小时，组数多，但每组已基本有序</li>
+</ul>
+<p>对于 Shell 原始序列（n/2, n/4, ..., 1），最坏情况下时间复杂度为 <strong>O(n²)</strong>。</p>
+<p>使用更好的增量序列（如 Sedgewick）可以降到约 <strong>O(n^1.25)</strong> 甚至更低。</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>时间复杂度（取决于增量序列）</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好</td>
+<td>取决于序列，通常优于 O(n²)</td>
+</tr>
+<tr>
+<td>最坏</td>
+<td>O(n²)</td>
+</tr>
+<tr>
+<td>平均</td>
+<td>取决于序列，通常优于 O(n²)</td>
+</tr>
+</tbody>
+</table>
+<p>即使是 Sedgewick 序列，最好情况也只是 O(n log n) 的量级，且并非严格证明。</p>
+<p>工程上建议以实测为准，不必对理论最优值过度承诺。</p>
+<h3>空间复杂度怎么算</h3>
+<p>只用 <code>gap</code>、<code>i</code>、<code>j</code>、<code>temp</code> 等标量 → <strong>O(1)</strong>，原地排序。</p>
+<p>📌 小结算法：<strong>时间取决于增量序列（Shell 原始最坏 O(n²)、Knuth 约 O(n^1.5)、Sedgewick 约 O(n^1.25)）、空间 O(1)、不稳定、原地、突破了简单插入排序的天花板</strong>。</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：按递减 gap 分组做插入排序，先粗调后精调，是插入排序的"跨步加速版"。</li>
+<li><strong>解决什么 / 用在哪</strong>：中等规模数据、无递归环境（嵌入式）的实用排序；代码简单可控；突破了 O(n²) 天花板。</li>
+<li><strong>局限</strong>：不稳定；复杂度依赖增量序列的选择；大数据量不如快排/归并。</li>
+<li><strong>复杂度怎么算</strong>：无统一公式，依赖 gap 序列。Shell 原始序列最坏 O(n²)；好的序列可达 O(n^1.25) 甚至更好。空间恒定 O(1)。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
