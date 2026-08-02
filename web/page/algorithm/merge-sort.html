@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：归并排序——分而治之，有序合并</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：归并排序——分而治之，有序合并</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 13 分钟</p>
+<p>假设你要把两摞已经各自排好序的扑克牌合并成一摞有序的，怎么做？</p>
+<p>很简单：每次看两张顶牌，选小的那张翻到新摞里。</p>
+<p>重复这个过程直到两摞都空了为止，新摞自然就是有序的。</p>
+<p><strong>归并排序（Merge Sort）</strong> 就是这个思路的递归版：先把数组一分为二，分别排序，再把两个有序的半数组合并。</p>
+<p>它是最经典的"分治法"（Divide and Conquer）排序算法，由 John von Neumann 在 1945 年提出。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p>递归地把数组从中间切开，对左右两半分别排序，然后把两个有序子数组合并成一个。</p>
+<p>分解直到只剩一个元素（天然有序），然后自底向上逐层合并。</p>
+<p>分治法的标准范式：先拆到不能再拆，再按规则合并（两个有序序列合并很简单）。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+function mergeSort(arr, left, right):
+    if left &gt;= right: return
+    mid = (left + right) / 2
+    mergeSort(arr, left, mid)       // 排序左半
+    mergeSort(arr, mid+1, right)    // 排序右半
+    merge(arr, left, mid, right)    // 合并
+
+function merge(arr, left, mid, right):
+    复制 arr[left..mid] 到 leftArr
+    复制 arr[mid+1..right] 到 rightArr
+    i = j = 0, k = left
+    while 左右数组都没取完:
+        if leftArr[i] &lt;= rightArr[j]:
+            arr[k++] = leftArr[i++]
+        else:
+            arr[k++] = rightArr[j++]
+    把剩余元素追加到 arr
+</code></pre>
+<p>下面用流程图拆解这段伪代码的分治递归结构与合并过程。</p>
+<h3>工作原理流程图</h3>
+<p>对应伪代码的分治递归结构：</p>
+<div class="mermaid">
+flowchart TB
+    A([mergeSort arr, l, r]) --&gt; B{l &gt;= r ?}
+    B --&gt;|是| C([直接返回, 单元素已有序])
+    B --&gt;|否| D[&quot;mid = (l+r)/2&quot;]
+    D --&gt; E[mergeSort 左半 arr, l, mid]
+    D --&gt; F[mergeSort 右半 arr, mid+1, r]
+    E --&gt; G[&quot;merge 合并 arr[l..mid] 和 arr[mid+1..r]&quot;]
+    F --&gt; G
+</div>
+<p>合并两个有序子数组：</p>
+<div class="mermaid">
+flowchart LR
+    A([开始合并]) --&gt; B[i=0 指向左数组&lt;br/&gt;j=0 指向右数组]
+    B --&gt; C{左数组未完 且 右数组未完 ?}
+    C --&gt;|否| H[剩余元素直接追加]
+    H --&gt; I([合并完成])
+    C --&gt;|是| D{&quot;左[i] &lt;= 右[j] ?&quot;}
+    D --&gt;|是| E[&quot;取左[i], ++i&quot;]
+    D --&gt;|否| F[&quot;取右[j], ++j&quot;]
+    E --&gt; G[写入输出]
+    F --&gt; G
+    G --&gt; C
+</div>
+<h3>分治演示</h3>
+<p>用 <code>[38, 27, 43, 3, 9, 82, 10]</code> 跑一遍完整的分解与合并过程：</p>
+<pre><code>初始数组: [38, 27, 43, 3, 9, 82, 10]
+
+分解 [0..6] -&gt; [0..3] + [4..6]                            ← 第一层拆分
+  分解 [0..3] -&gt; [0..1] + [2..3]                          ← 第二层拆分
+    分解 [0..1] -&gt; [0..0] + [1..1]                        ← 到达基例
+    合并 [0..0] + [1..1]: [38] + [27] -&gt; [27,38]          ← 开始回溯合并
+    分解 [2..3] -&gt; [2..2] + [3..3]                        ← 到达基例
+    合并 [2..2] + [3..3]: [43] + [3] -&gt; [3,43]            ← 合并
+  合并 [0..1] + [2..3]: [27,38] + [3,43] -&gt; [3,27,38,43]  ← 合并左半区
+
+  分解 [4..6] -&gt; [4..5] + [6..6]                          ← 第二层拆分
+    分解 [4..5] -&gt; [4..4] + [5..5]                        ← 到达基例
+    合并 [4..4] + [5..5]: [9] + [82] -&gt; [9,82]            ← 合并
+  合并 [4..5] + [6..6]: [9,82] + [10] -&gt; [9,10,82]        ← 合并右半区
+
+合并 [0..3] + [4..6]: [3,27,38,43] + [9,10,82] -&gt; [3,9,10,27,38,43,82]  ← 最终合并
+
+最终结果:  [3, 9, 10, 27, 38, 43, 82]
+总比较次数: 14
+</code></pre>
+<p>注意观察：每次合并的两个子数组都是<strong>各自有序</strong>的，所以合并过程只需要线性扫描。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>大数据量排序</strong></td>
+<td>稳定的 O(n log n)，不依赖数据分布</td>
+</tr>
+<tr>
+<td><strong>外部排序</strong></td>
+<td>数据量大到无法全部装入内存时，可以分段归并（数据库常用）</td>
+</tr>
+<tr>
+<td><strong>稳定排序需求</strong></td>
+<td>需要保持相等元素原始顺序的场景（如按多级关键字排序）</td>
+</tr>
+<tr>
+<td><strong>链表排序</strong></td>
+<td>归并排序对链表很友好，不需要随机访问</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>空间 O(n)</strong></td>
+<td>需要额外的辅助数组做合并，不是原地排序</td>
+</tr>
+<tr>
+<td><strong>常数因子较大</strong></td>
+<td>实际运行速度通常比快排慢一些（数据拷贝开销）</td>
+</tr>
+<tr>
+<td><strong>对小数据过重</strong></td>
+<td>n 很小时递归和数组拷贝的开销占比高</td>
+</tr>
+</tbody>
+</table>
+<h3>稳定性</h3>
+<p>归并排序是<strong>稳定的</strong>。</p>
+<p>在合并过程中，当左右两边当前元素相等时，优先取左边（<code>left[i] &lt;= right[j]</code>），这样相等元素的相对顺序不会改变。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>时间复杂度怎么算</h3>
+<p>用<strong>递归树分析法</strong>：</p>
+<p>每一层的工作量是 O(n)（每个元素在该层恰好参与一次合并）。</p>
+<p>递归树的高度是多少？</p>
+<p>每次把问题规模减半，直到 size=1 → 高度 = log₂n。</p>
+<p>总工作量 = 每层工作量 × 层数 = <strong>O(n) × O(log n) = O(n log n)</strong></p>
+<p>这个复杂度是<strong>固定的</strong>，不受输入数据影响。</p>
+<p>程序验证：</p>
+<table>
+<thead>
+<tr>
+<th>输入</th>
+<th>比较次数</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一般乱序 <code>[38,27,43,3,9,82,10]</code></td>
+<td>14</td>
+</tr>
+<tr>
+<td>已有序 <code>[1,2,3,4,5,6,7]</code></td>
+<td>11</td>
+</tr>
+<tr>
+<td>完全逆序 <code>[7,6,5,4,3,2,1]</code></td>
+<td>9</td>
+</tr>
+</tbody>
+</table>
+<p>三种情况的比较次数都在同一量级（n log n 的常数倍附近），不会像冒泡、选择那样出现数量级的差异。</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>时间复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好</td>
+<td><strong>O(n log n)</strong></td>
+</tr>
+<tr>
+<td>最坏</td>
+<td><strong>O(n log n)</strong></td>
+</tr>
+<tr>
+<td>平均</td>
+<td><strong>O(n log n)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>三种情况完全一致，这是归并排序的一大优势（性能可预测）。</p>
+<h3>空间复杂度怎么算</h3>
+<p>合并步骤需要临时数组存储左右两部分。</p>
+<p>最大额外空间 = 整个数组的副本 → <strong>O(n)</strong>。</p>
+<p>如果用链表实现，可以在合并时通过修改指针完成，空间可以降到 O(1)。</p>
+<p>但数组版本的标准实现需要 O(n)。</p>
+<p>📌 小结算法：<strong>时间 O(n log n)（三档一致）、空间 O(n)、稳定、非原地、分治经典范式</strong>。</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：递归二分数组，分别排序后合并；分治法的教科书级应用。</li>
+<li><strong>解决什么 / 用在哪</strong>：大数据量稳定排序；外部排序的基础；链表排序的首选。</li>
+<li><strong>局限</strong>：需要 O(n) 额外空间；对小数据有过度设计之嫌；实际速度略逊于快排。</li>
+<li><strong>复杂度怎么算</strong>：递归树分析 —— 每层 O(n)、共 log₂n 层 → O(n log n)。三档一致，性能可预测。空间 O(n) 用于辅助合并数组。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>

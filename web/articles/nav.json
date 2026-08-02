@@ -225,34 +225,9 @@
           "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 12 分钟"
         },
         {
-          "href": "./page/algorithm/insertion-sort.html",
-          "text": "C++ 排序算法实践：插入排序——像整理扑克牌一样逐张归位",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 11 分钟"
-        },
-        {
           "href": "./page/algorithm/merge-sort.html",
           "text": "C++ 排序算法实践：归并排序——分而治之，有序合并",
           "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 13 分钟"
-        },
-        {
-          "href": "./page/algorithm/quick-sort.html",
-          "text": "C++ 排序算法实践：快速排序——选基准，分区，递归征服",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 13 分钟"
-        },
-        {
-          "href": "./page/algorithm/radix-sort.html",
-          "text": "C++ 排序算法实践：基数排序——逐位分配，按位收集",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 11 分钟"
-        },
-        {
-          "href": "./page/algorithm/selection-sort.html",
-          "text": "C++ 排序算法实践：选择排序——每轮挑个最小的放到前面",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 10 分钟"
-        },
-        {
-          "href": "./page/algorithm/shell-sort.html",
-          "text": "C++ 排序算法实践：希尔排序——分组插入，逐步逼近有序",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-01 | 阅读时长：约 12 分钟"
         }
       ]
     },
