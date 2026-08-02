@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：快速排序——选基准，分区，递归征服</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：快速排序——选基准，分区，递归征服</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 13 分钟</p>
+<p>你组织活动分组的时候有没有用过这招：随便找个人站出来当基准，比他瘦的站左边，比他胖的站右边，然后对左右两组重复同样的操作... 几轮下来所有人就按体重排好了。</p>
+<p>这个思路就是<strong>快速排序（Quick Sort）</strong> ：选一个基准值（pivot），把数组分成"小于等于 pivot"和"大于 pivot"的两部分，然后对两部分递归排序。</p>
+<p>它由 Tony Hoare 在 1960 年发明，是目前实践中使用最广泛的通用排序算法。</p>
+<p>C++ 的 <code>std::sort</code>、Java 的 <code>Arrays.sort()</code> 底层都是它的变种。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p>选一个 pivot，通过一趟扫描把数组分成两部分：左边 &lt;= pivot，右边 &gt; pivot。</p>
+<p>然后对左右两部分递归执行同样的操作。</p>
+<p>"选个代表，小的站左边大的站右边，然后各组自己再选代表继续分。" </p>
+<p>快速排序的核心操作叫"分区（Partitioning）"，整个算法就是不断分区。</p>
+<h3>为什么快</h3>
+<p>和归并排序对比：</p>
+<table>
+<thead>
+<tr>
+<th>特征</th>
+<th>归并排序</th>
+<th>快速排序</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>策略</td>
+<td>先分后合（一定均分）</td>
+<td>先分区后递归（不一定均分）</td>
+</tr>
+<tr>
+<td>递归方向</td>
+<td>自顶向下分解，自底向上合并</td>
+<td>自顶向下分区，每步确定一个元素位置</td>
+</tr>
+<tr>
+<td>额外空间</td>
+<td>O(n) 辅助数组</td>
+<td><strong>O(log n) 递归栈</strong>（原地分区）</td>
+</tr>
+<tr>
+<td>核心操作</td>
+<td>合并两个有序数组</td>
+<td>单趟分区</td>
+</tr>
+</tbody>
+</table>
+<p>快速排序的优势在于<strong>分区是原地的</strong>（不需要额外数组），而且如果 pivot 选得好，每轮都能把问题规模大致减半。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+function partition(arr, low, high):
+    pivot = arr[high]          // 选最后一个做 pivot
+    i = low - 1
+    for j = low to high - 1:
+        if arr[j] &lt;= pivot:
+            i++
+            swap(arr[i], arr[j])
+    swap(arr[i + 1], arr[high])
+    return i + 1               // pivot 的最终位置
+
+function quickSort(arr, low, high):
+    if low &lt; high:
+        pi = partition(arr, low, high)
+        quickSort(arr, low, pi - 1)
+        quickSort(arr, pi + 1, high)
+</code></pre>
+<p>下面用流程图拆解这段伪代码的递归分区结构。</p>
+<h3>工作原理流程图</h3>
+<p>对应伪代码的整体骨架：</p>
+<div class="mermaid">
+flowchart TB
+    A([quickSort arr, low, high]) --&gt; B{low &lt; high ?}
+    B --&gt;|否| C([返回])
+    B --&gt;|是| D[partition 返回 pivot 最终位置 pi]
+    D --&gt; E[quickSort 左半 low..pi-1]
+    D --&gt; F[quickSort 右半 pi+1..high]
+    E --&gt; G
+    F --&gt; G
+</div>
+<p>Lomuto 分区方案（选最右元素为 pivot）：</p>
+<div class="mermaid">
+flowchart LR
+    A([pivot = arr[high]&lt;br/&gt;i = low - 1]) --&gt; B{j 从 low 到 high-1}
+    B --&gt; C{&quot;arr[j] &lt;= pivot ?&quot;}
+    C --&gt;|是| D[&quot;++i, 交换 arr[i] 与 arr[j]&quot;]
+    C --&gt;|否| E[不动]
+    D --&gt; F[++j]
+    E --&gt; F
+    F --&gt; G{&quot;j &lt; high ?&quot;}
+    G --&gt;|是| B
+    G --&gt;|否| H[&quot;交换 arr[i+1] 与 arr[high]&quot;]
+    H --&gt; I([返回 i+1])
+</div>
+<h3>分区演示</h3>
+<p>用 <code>[10, 7, 8, 9, 1, 5]</code> 跑一遍 Lomuto 分区方案：</p>
+<pre><code>初始数组: [10, 7, 8, 9, 1, 5]
+
+分区 [0..5], pivot=5
+  -&gt; pivot 5 落位 1: [1] [5] [8,9,10,7]
+左半区 [0..0] | 右半区 [2..5]
+
+  分区 [2..5], pivot=7
+    -&gt; pivot 7 落位 2: [] [7] [9,10,8]
+  左半区 [2..1] | 右半区 [3..5]
+
+    分区 [3..5], pivot=8
+      -&gt; pivot 8 落位 3: [] [8] [10,9]
+    左半区 [3..2] | 右半区 [4..5]
+
+      分区 [4..5], pivot=9
+        -&gt; pivot 9 落位 4: [] [9] [10]
+      左半区 [4..3] | 右半区 [5..5]
+
+最终结果: [1, 5, 7, 8, 9, 10]
+总比较: 11 | 总交换: 5
+</code></pre>
+<p>每一步确定一个 pivot 的最终位置，这就是"快速"的含义——每轮至少让一个元素到位。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>通用排序首选</strong></td>
+<td>平均 O(n log n) 常数因子小，实际最快</td>
+</tr>
+<tr>
+<td><strong>内存受限环境</strong></td>
+<td>原地排序，只需 O(log n) 栈空间</td>
+</tr>
+<tr>
+<td><strong>缓存友好</strong></td>
+<td>顺序访问模式，CPU 缓存命中率高</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>不稳定</strong></td>
+<td>分区的交换操作会跨越相等元素</td>
+</tr>
+<tr>
+<td><strong>最坏 O(n²)</strong></td>
+<td>已有序或逆序数据 + Lomuto 方案会退化</td>
+</tr>
+<tr>
+<td><strong>依赖 pivot 选择</strong></td>
+<td>pivot 选不好会导致严重不平衡</td>
+</tr>
+</tbody>
+</table>
+<h3>最坏情况与优化</h3>
+<p>程序验证了 Lomuto 方案的最坏情况。</p>
+<p>验证程序位于 <code>src/cpp/algorithm/quick_sort.cpp</code>（编译命令 <code>make bin/quick_sort</code>）。</p>
+<p>使用三组数据样本：一般乱序 <code>[10,7,8,9,1,5]</code>、已有序 <code>[1,2,3,4,5]</code>、完全逆序 <code>[5,4,3,2,1]</code>。</p>
+<p>以下数据均来自程序实际输出：</p>
+<table>
+<thead>
+<tr>
+<th>输入</th>
+<th>比较</th>
+<th>交换</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>一般乱序</td>
+<td>11</td>
+<td>5</td>
+</tr>
+<tr>
+<td>已有序（Lomuto 最坏）</td>
+<td>10</td>
+<td>4</td>
+</tr>
+<tr>
+<td>完全逆序</td>
+<td>10</td>
+<td>4</td>
+</tr>
+</tbody>
+</table>
+<p>看起来数字差不多？那是因为 n=6 太小了。</p>
+<p>当 n=10000 时：</p>
+<ul>
+<li>最坏情况比较 ≈ n²/2 = 5000 万次</li>
+<li>平均情况比较 ≈ n log n ≈ 13 万次</li>
+</ul>
+<p>差距是百倍级的！</p>
+<p>工程上常用的优化手段可参考如下：</p>
+<table>
+<thead>
+<tr>
+<th>优化方法</th>
+<th>解决什么问题</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>随机化 pivot</strong></td>
+<td><code>swap(arr[rand()], arr[high])</code>，避免恶意输入触发最坏情况</td>
+</tr>
+<tr>
+<td><strong>三数取中</strong></td>
+<td>取首/中/末的中位数做 pivot，更稳健</td>
+</tr>
+<tr>
+<td><strong>小区间插入排序</strong></td>
+<td>当子数组长度 &lt; 16 时切换到插入排序，减少递归开销</td>
+</tr>
+<tr>
+<td><strong>三路分区</strong></td>
+<td>把数组分成 &lt; pivot / = pivot / &gt; pivot 三段，处理大量重复元素</td>
+</tr>
+</tbody>
+</table>
+<p>C++ <code>std::sort</code> 通常结合了内省排序（Introsort）：快排 + 堆排序兜底（防止退化）+ 插入排序收尾。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>时间复杂度怎么算</h3>
+<p><strong>基本操作是比较</strong>（<code>arr[j] &lt;= pivot</code>）。</p>
+<p>关键在于<strong>分区是否均衡</strong>：</p>
+<p><strong>最好情况（每次 pivot 都在中位数位置）：</strong>
+每轮把问题分成大致相等的两半。递归树高度 = log₂n，每层工作量 O(n)。
+总计 <strong>O(n log n)</strong>。</p>
+<p><strong>最坏情况（每次 pivot 都是最小或最大）：</strong>
+比如已有序数组 + Lomuto 选最后一个做 pivot：每次只减少一个元素。递归树高度 = n，第 i 层工作量 = n-i。
+总计 = n + (n-1) + ... + 1 = <strong>O(n²)</strong>。</p>
+<p><strong>平均情况（pivot 期望落在中间某个位置）：</strong>
+数学期望可以证明为 <strong>O(n log n)</strong>。且常数因子比归并排序小，所以实际运行更快。</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>时间复杂度</th>
+<th>条件</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好</td>
+<td><strong>O(n log n)</strong></td>
+<td>每次均匀分区</td>
+</tr>
+<tr>
+<td>最坏</td>
+<td><strong>O(n²)</strong></td>
+<td>每次极不均匀分区（如已有序 + Lomuto）</td>
+</tr>
+<tr>
+<td>平均</td>
+<td><strong>O(n log n)</strong></td>
+<td>随机输入</td>
+</tr>
+</tbody>
+</table>
+<h3>空间复杂度怎么算</h3>
+<p>分区本身是原地的（O(1) 额外空间）。但递归调用需要栈空间：</p>
+<ul>
+<li>最好/平均：递归深度 O(log n) → <strong>O(log n)</strong></li>
+<li>最坏：递归深度 O(n) → <strong>O(n)</strong></li>
+</ul>
+<p>📌 小结算法：<strong>时间平均 O(n log n)（最坏 O(n²)）、空间 O(log n) 栈、不稳定、原地分区、实践中最快的通用排序</strong>。</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：选 pivot 分区成大小两半，递归处理。核心操作是一趟原地分区。</li>
+<li><strong>解决什么 / 用在哪</strong>：通用排序的事实标准；<code>std::sort</code> 的核心；缓存友好的原地排序。</li>
+<li><strong>局限</strong>：不稳定；最坏退化为 O(n²)；pivot 选择敏感。</li>
+<li><strong>复杂度怎么算</strong>：取决于分区质量。均衡时递归树高 log₂n → O(n log n)；极端不均衡时退化为 O(n²)。空间是递归栈 O(log n)~O(n)。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
