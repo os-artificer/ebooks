@@ -14,7 +14,7 @@ DRAFTS = ROOT / "notes"
 NAV_PATH = ROOT / "web" / "articles" / "nav.json"
 # 与 publish_all 中一致：仅这些分类参与导航同步
 NAV_SYNC_KEYS = frozenset(
-    {"cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch", "design-mode", "algorithm"}
+    {"cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch", "design-mode", "algorithm", "domain-papers"}
 )
 
 # 仅当文章含 ```mermaid 代码块时, 才在 HTML 中注入 Mermaid 运行时,
@@ -314,7 +314,7 @@ def copy_tech_arch_assets_if_needed(categories: set[str]) -> None:
 
 
 def publish_all() -> None:
-    categories = ["cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch", "design-mode", "algorithm"]
+    categories = ["cpp", "golang", "stl", "linux", "libc-gcc", "tech-arch", "design-mode", "algorithm", "domain-papers"]
     for cat in categories:
         in_dir = DRAFTS / cat
         out_dir = ROOT / "web" / "page" / cat

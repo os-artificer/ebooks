@@ -303,6 +303,19 @@
           "excerpt": "引导语：选数据库总踩坑？7 大类、30 + 主流库一次性讲清优缺点与场景，看完少走 90% 弯路，架构与开发都能直接用。"
         }
       ]
+    },
+    {
+      "key": "domain-papers",
+      "title": "领域知识",
+      "open": false,
+      "summaryClass": "nav-category--domain-papers",
+      "items": [
+        {
+          "href": "./page/domain-papers/swot-analysis.html",
+          "text": "SWOT 分析法：四个象限看清局势，做出更聪明的决策",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-02 | 阅读时长：约 16 分钟"
+        }
+      ]
     }
   ]
 }
