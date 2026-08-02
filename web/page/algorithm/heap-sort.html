@@ -241,6 +241,44 @@ flowchart LR
 <p>堆排序的独特价值：<strong>O(n log n) + O(1) 空间</strong> 这个组合只有它能做到（在比较类排序中）。</p>
 <hr />
 <h2>💻 C++ 实现与复杂度分析</h2>
+<h3>通用 C++ 模板实现</h3>
+<p>堆排序只依赖比较运算符 <code>&gt;</code>，适用于任意可比较类型：</p>
+<pre><code class="language-cpp">#include &lt;utility&gt;   // std::swap
+#include &lt;vector&gt;
+
+template &lt;typename T&gt;
+void heapify(std::vector&lt;T&gt;&amp; arr, int n, int root) {
+    int largest = root;
+    int left  = 2 * root + 1;
+    int right = 2 * root + 2;
+
+    if (left &lt; n &amp;&amp; arr[left] &gt; arr[largest])
+        largest = left;
+    if (right &lt; n &amp;&amp; arr[right] &gt; arr[largest])
+        largest = right;
+
+    if (largest != root) {
+        std::swap(arr[root], arr[largest]);
+        heapify(arr, n, largest);
+    }
+}
+
+template &lt;typename T&gt;
+void heapSort(std::vector&lt;T&gt;&amp; arr) {
+    int n = static_cast&lt;int&gt;(arr.size());
+    if (n &lt;= 1) return;
+
+    // 建大顶堆
+    for (int i = n / 2 - 1; i &gt;= 0; --i)
+        heapify(arr, n, i);
+
+    // 逐次弹出堆顶到末尾
+    for (int i = n - 1; i &gt; 0; --i) {
+        std::swap(arr[0], arr[i]);
+        heapify(arr, i, 0);
+    }
+}
+</code></pre>
 <h3>时间复杂度怎么算</h3>
 <p><strong>建堆的时间复杂度：O(n)</strong></p>
 <p>这不是显而易见的。</p>

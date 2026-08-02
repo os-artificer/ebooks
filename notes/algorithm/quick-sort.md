@@ -179,6 +179,46 @@ C++ `std::sort` 通常结合了内省排序（Introsort）：快排 + 堆排序�
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+快速排序只依赖比较运算符 `<=`，适用于任意可比较类型。以下为 Lomuto 分区方案：
+
+```cpp
+#include <utility>   // std::swap
+#include <vector>
+
+template <typename T>
+int partition(std::vector<T>& arr, int low, int high) {
+    T pivot = arr[high];       // 选最后一个做基准
+    int i = low - 1;
+    for (int j = low; j < high; ++j) {
+        if (arr[j] <= pivot) {
+            ++i;
+            if (i != j)
+                std::swap(arr[i], arr[j]);
+        }
+    }
+    std::swap(arr[i + 1], arr[high]);
+    return i + 1;
+}
+
+template <typename T>
+void quickSortImpl(std::vector<T>& arr, int low, int high) {
+    if (low < high) {
+        int pi = partition(arr, low, high);
+        quickSortImpl(arr, low, pi - 1);
+        quickSortImpl(arr, pi + 1, high);
+    }
+}
+
+// 包装函数
+template <typename T>
+void quickSort(std::vector<T>& arr) {
+    if (!arr.empty())
+        quickSortImpl(arr, 0, static_cast<int>(arr.size()) - 1);
+}
+```
+
 ### 时间复杂度怎么算
 
 **基本操作是比较**（`arr[j] <= pivot`）。

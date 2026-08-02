@@ -150,6 +150,29 @@ flowchart TB
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+插入排序只依赖比较运算符 `>` 和 `std::move`，适用于任意可比较且可移动类型：
+
+```cpp
+#include <utility>   // std::move
+#include <vector>
+
+template <typename T>
+void insertionSort(std::vector<T>& arr) {
+    int n = static_cast<int>(arr.size());
+    for (int i = 1; i < n; ++i) {
+        T key = std::move(arr[i]);
+        int j = i - 1;
+        while (j >= 0 && arr[j] > key) {
+            arr[j + 1] = std::move(arr[j]);
+            --j;
+        }
+        arr[j + 1] = std::move(key);
+    }
+}
+```
+
 ### 时间复杂度怎么算
 
 **基本操作是比较**（`arr[j] > key`）和**移动**（赋值操作）。

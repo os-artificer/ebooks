@@ -262,6 +262,42 @@ flowchart LR
 <p>C++ <code>std::sort</code> 通常结合了内省排序（Introsort）：快排 + 堆排序兜底（防止退化）+ 插入排序收尾。</p>
 <hr />
 <h2>💻 C++ 实现与复杂度分析</h2>
+<h3>通用 C++ 模板实现</h3>
+<p>快速排序只依赖比较运算符 <code>&lt;=</code>，适用于任意可比较类型。以下为 Lomuto 分区方案：</p>
+<pre><code class="language-cpp">#include &lt;utility&gt;   // std::swap
+#include &lt;vector&gt;
+
+template &lt;typename T&gt;
+int partition(std::vector&lt;T&gt;&amp; arr, int low, int high) {
+    T pivot = arr[high];       // 选最后一个做基准
+    int i = low - 1;
+    for (int j = low; j &lt; high; ++j) {
+        if (arr[j] &lt;= pivot) {
+            ++i;
+            if (i != j)
+                std::swap(arr[i], arr[j]);
+        }
+    }
+    std::swap(arr[i + 1], arr[high]);
+    return i + 1;
+}
+
+template &lt;typename T&gt;
+void quickSortImpl(std::vector&lt;T&gt;&amp; arr, int low, int high) {
+    if (low &lt; high) {
+        int pi = partition(arr, low, high);
+        quickSortImpl(arr, low, pi - 1);
+        quickSortImpl(arr, pi + 1, high);
+    }
+}
+
+// 包装函数
+template &lt;typename T&gt;
+void quickSort(std::vector&lt;T&gt;&amp; arr) {
+    if (!arr.empty())
+        quickSortImpl(arr, 0, static_cast&lt;int&gt;(arr.size()) - 1);
+}
+</code></pre>
 <h3>时间复杂度怎么算</h3>
 <p><strong>基本操作是比较</strong>（<code>arr[j] &lt;= pivot</code>）。</p>
 <p>关键在于<strong>分区是否均衡</strong>：</p>

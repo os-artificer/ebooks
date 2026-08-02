@@ -170,6 +170,46 @@ flowchart LR
 <p>在合并过程中，当左右两边当前元素相等时，优先取左边（<code>left[i] &lt;= right[j]</code>），这样相等元素的相对顺序不会改变。</p>
 <hr />
 <h2>💻 C++ 实现与复杂度分析</h2>
+<h3>通用 C++ 模板实现</h3>
+<p>归并排序只依赖比较运算符 <code>&lt;=</code>，适用于任意可比较类型。合并过程需要临时数组，空间 O(n)：</p>
+<pre><code class="language-cpp">#include &lt;utility&gt;   // std::move
+#include &lt;vector&gt;
+
+template &lt;typename T&gt;
+void merge(std::vector&lt;T&gt;&amp; arr, int left, int mid, int right) {
+    std::vector&lt;T&gt; leftArr(arr.begin() + left, arr.begin() + mid + 1);
+    std::vector&lt;T&gt; rightArr(arr.begin() + mid + 1, arr.begin() + right + 1);
+
+    int i = 0, j = 0, k = left;
+    while (i &lt; static_cast&lt;int&gt;(leftArr.size()) &amp;&amp;
+           j &lt; static_cast&lt;int&gt;(rightArr.size())) {
+        if (leftArr[i] &lt;= rightArr[j])        // &lt;= 保证稳定性
+            arr[k++] = std::move(leftArr[i++]);
+        else
+            arr[k++] = std::move(rightArr[j++]);
+    }
+    while (i &lt; static_cast&lt;int&gt;(leftArr.size()))
+        arr[k++] = std::move(leftArr[i++]);
+    while (j &lt; static_cast&lt;int&gt;(rightArr.size()))
+        arr[k++] = std::move(rightArr[j++]);
+}
+
+template &lt;typename T&gt;
+void mergeSortImpl(std::vector&lt;T&gt;&amp; arr, int left, int right) {
+    if (left &gt;= right) return;
+    int mid = left + (right - left) / 2;
+    mergeSortImpl(arr, left, mid);
+    mergeSortImpl(arr, mid + 1, right);
+    merge(arr, left, mid, right);
+}
+
+// 包装函数
+template &lt;typename T&gt;
+void mergeSort(std::vector&lt;T&gt;&amp; arr) {
+    if (!arr.empty())
+        mergeSortImpl(arr, 0, static_cast&lt;int&gt;(arr.size()) - 1);
+}
+</code></pre>
 <h3>时间复杂度怎么算</h3>
 <p>用<strong>递归树分析法</strong>：</p>
 <p>每一层的工作量是 O(n)（每个元素在该层恰好参与一次合并）。</p>

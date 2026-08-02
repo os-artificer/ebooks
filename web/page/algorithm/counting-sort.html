@@ -174,6 +174,39 @@ Step 3 - 输出数组: [1, 2, 2, 3, 3, 4, 8]
 <p>(2,a) 在 (2,b) 前，(3,x) 在 (3,z) 前 —— 相等值的相对顺序完美保持。</p>
 <hr />
 <h2>💻 C++ 实现与复杂度分析</h2>
+<h3>通用 C++ 模板实现</h3>
+<p>计数排序依赖数值到索引的映射，适用于整数类型（<code>int</code> / <code>long long</code> / <code>size_t</code> 等）：</p>
+<pre><code class="language-cpp">#include &lt;algorithm&gt;  // std::minmax_element
+#include &lt;vector&gt;
+
+template &lt;typename T&gt;
+void countingSort(std::vector&lt;T&gt;&amp; arr) {
+    int n = static_cast&lt;int&gt;(arr.size());
+    if (n &lt;= 1) return;
+
+    auto [minIt, maxIt] = std::minmax_element(arr.begin(), arr.end());
+    T minVal = *minIt, maxVal = *maxIt;
+    int range = static_cast&lt;int&gt;(maxVal - minVal + 1);
+
+    // 计数
+    std::vector&lt;int&gt; count(range, 0);
+    for (const T&amp; v : arr)
+        count[static_cast&lt;int&gt;(v - minVal)]++;
+
+    // 前缀和
+    for (int i = 1; i &lt; range; ++i)
+        count[i] += count[i - 1];
+
+    // 反向构建输出（保证稳定性）
+    std::vector&lt;T&gt; output(n);
+    for (int i = n - 1; i &gt;= 0; --i) {
+        int idx = static_cast&lt;int&gt;(arr[i] - minVal);
+        output[count[idx] - 1] = arr[i];
+        count[idx]--;
+    }
+    arr = std::move(output);
+}
+</code></pre>
 <h3>时间复杂度怎么算</h3>
 <p>按以下步骤进行分析与计算：</p>
 <table>

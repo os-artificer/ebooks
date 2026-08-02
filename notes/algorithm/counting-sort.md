@@ -148,6 +148,43 @@ Step 3 - 输出数组: [1, 2, 2, 3, 3, 4, 8]
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+计数排序依赖数值到索引的映射，适用于整数类型（`int` / `long long` / `size_t` 等）：
+
+```cpp
+#include <algorithm>  // std::minmax_element
+#include <vector>
+
+template <typename T>
+void countingSort(std::vector<T>& arr) {
+    int n = static_cast<int>(arr.size());
+    if (n <= 1) return;
+
+    auto [minIt, maxIt] = std::minmax_element(arr.begin(), arr.end());
+    T minVal = *minIt, maxVal = *maxIt;
+    int range = static_cast<int>(maxVal - minVal + 1);
+
+    // 计数
+    std::vector<int> count(range, 0);
+    for (const T& v : arr)
+        count[static_cast<int>(v - minVal)]++;
+
+    // 前缀和
+    for (int i = 1; i < range; ++i)
+        count[i] += count[i - 1];
+
+    // 反向构建输出（保证稳定性）
+    std::vector<T> output(n);
+    for (int i = n - 1; i >= 0; --i) {
+        int idx = static_cast<int>(arr[i] - minVal);
+        output[count[idx] - 1] = arr[i];
+        count[idx]--;
+    }
+    arr = std::move(output);
+}
+```
+
 ### 时间复杂度怎么算
 
 按以下步骤进行分析与计算：

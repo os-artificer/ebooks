@@ -156,6 +156,8 @@ flowchart LR
 
 ### 通用实现
 
+可直接复用的代码：
+
 ```cpp
 template <typename T>
 void selectionSort(std::vector<T>& arr) {

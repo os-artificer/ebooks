@@ -151,6 +151,44 @@ Step 3 - 按桶顺序合并:
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+可直接复用的代码：
+
+```cpp
+// 通用模板：适用于任意数值类型（int / double / float 等）
+template <typename T>
+void bucketSort(std::vector<T>& arr, int bucketCount = 0) {
+    int n = static_cast<int>(arr.size());
+    if (n <= 1) return;
+    if (bucketCount <= 0) bucketCount = n;          // 默认桶数 = 元素数
+
+    // 确定数据范围
+    auto [minIt, maxIt] = std::minmax_element(arr.begin(), arr.end());
+    T minVal = *minIt, maxVal = *maxIt;
+    if (minVal == maxVal) return;
+
+    // 创建桶
+    std::vector<std::vector<T>> buckets(bucketCount);
+
+    // 分桶：将每个元素映射到对应桶
+    double range = static_cast<double>(maxVal - minVal);
+    for (const T& val : arr) {
+        int idx = static_cast<int>(
+            bucketCount * static_cast<double>(val - minVal) / range);
+        if (idx >= bucketCount) idx = bucketCount - 1;   // 边界保护
+        buckets[idx].push_back(val);
+    }
+
+    // 各桶内部排序 + 按桶号合并
+    arr.clear();
+    for (auto& bucket : buckets) {
+        std::sort(bucket.begin(), bucket.end());
+        arr.insert(arr.end(), bucket.begin(), bucket.end());
+    }
+}
+```
+
 ### 时间复杂度怎么算
 
 分三步计算：

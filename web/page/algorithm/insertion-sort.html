@@ -204,6 +204,25 @@ flowchart TB
 <p>(2,x) 仍然在 (2,y) 前面，相对顺序保持不变。</p>
 <hr />
 <h2>💻 C++ 实现与复杂度分析</h2>
+<h3>通用 C++ 模板实现</h3>
+<p>插入排序只依赖比较运算符 <code>&gt;</code> 和 <code>std::move</code>，适用于任意可比较且可移动类型：</p>
+<pre><code class="language-cpp">#include &lt;utility&gt;   // std::move
+#include &lt;vector&gt;
+
+template &lt;typename T&gt;
+void insertionSort(std::vector&lt;T&gt;&amp; arr) {
+    int n = static_cast&lt;int&gt;(arr.size());
+    for (int i = 1; i &lt; n; ++i) {
+        T key = std::move(arr[i]);
+        int j = i - 1;
+        while (j &gt;= 0 &amp;&amp; arr[j] &gt; key) {
+            arr[j + 1] = std::move(arr[j]);
+            --j;
+        }
+        arr[j + 1] = std::move(key);
+    }
+}
+</code></pre>
 <h3>时间复杂度怎么算</h3>
 <p><strong>基本操作是比较</strong>（<code>arr[j] &gt; key</code>）和<strong>移动</strong>（赋值操作）。</p>
 <p>按以下三种情况分析：</p>

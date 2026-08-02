@@ -179,6 +179,30 @@ flowchart LR
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+冒泡排序只依赖比较运算符 `>`，可以直接写成模板，适用于任意可比较类型（`int` / `double` / `string` 等）：
+
+```cpp
+#include <utility>   // std::swap
+#include <vector>
+
+template <typename T>
+void bubbleSort(std::vector<T>& arr) {
+    int n = static_cast<int>(arr.size());
+    for (int i = 0; i < n; ++i) {
+        bool swapped = false;
+        for (int j = 0; j < n - 1 - i; ++j) {
+            if (arr[j] > arr[j + 1]) {
+                std::swap(arr[j], arr[j + 1]);
+                swapped = true;
+            }
+        }
+        if (!swapped) break;   // 提前退出优化
+    }
+}
+```
+
 ### 完整 C++ 实现
 
 正式可编译的完整代码在 `src/cpp/algorithm/bubble_sort.cpp`（含逐轮演示与三个测试场景）。

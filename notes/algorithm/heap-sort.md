@@ -173,6 +173,48 @@ flowchart LR
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+堆排序只依赖比较运算符 `>`，适用于任意可比较类型：
+
+```cpp
+#include <utility>   // std::swap
+#include <vector>
+
+template <typename T>
+void heapify(std::vector<T>& arr, int n, int root) {
+    int largest = root;
+    int left  = 2 * root + 1;
+    int right = 2 * root + 2;
+
+    if (left < n && arr[left] > arr[largest])
+        largest = left;
+    if (right < n && arr[right] > arr[largest])
+        largest = right;
+
+    if (largest != root) {
+        std::swap(arr[root], arr[largest]);
+        heapify(arr, n, largest);
+    }
+}
+
+template <typename T>
+void heapSort(std::vector<T>& arr) {
+    int n = static_cast<int>(arr.size());
+    if (n <= 1) return;
+
+    // 建大顶堆
+    for (int i = n / 2 - 1; i >= 0; --i)
+        heapify(arr, n, i);
+
+    // 逐次弹出堆顶到末尾
+    for (int i = n - 1; i > 0; --i) {
+        std::swap(arr[0], arr[i]);
+        heapify(arr, i, 0);
+    }
+}
+```
+
 ### 时间复杂度怎么算
 
 **建堆的时间复杂度：O(n)**

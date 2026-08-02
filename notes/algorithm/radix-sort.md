@@ -167,6 +167,47 @@ flowchart LR
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+基数排序依赖逐位提取，适用于非负整数类型（`int` / `long long` / `size_t` 等）。负数需额外处理符号位：
+
+```cpp
+#include <algorithm>  // std::max_element
+#include <vector>
+
+template <typename T>
+int getDigit(T num, int d) {
+    for (int i = 1; i < d; ++i) num /= 10;
+    return static_cast<int>(num % 10);
+}
+
+template <typename T>
+int getMaxDigits(const std::vector<T>& arr) {
+    T maxVal = *std::max_element(arr.begin(), arr.end());
+    int digits = 0;
+    while (maxVal > 0) { maxVal /= 10; ++digits; }
+    return digits;
+}
+
+template <typename T>
+void radixSort(std::vector<T>& arr) {
+    int n = static_cast<int>(arr.size());
+    if (n <= 1) return;
+    int maxDigits = getMaxDigits(arr);
+
+    for (int d = 1; d <= maxDigits; ++d) {
+        std::vector<std::vector<T>> buckets(10);
+        // 分配
+        for (int i = 0; i < n; ++i)
+            buckets[getDigit(arr[i], d)].push_back(arr[i]);
+        // 收集
+        int idx = 0;
+        for (int b = 0; b < 10; ++b)
+            for (const T& val : buckets[b])
+                arr[idx++] = val;
+    }
+}
+```
 
 ### 时间复杂度怎么算
 

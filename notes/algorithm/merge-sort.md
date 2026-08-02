@@ -139,6 +139,50 @@ flowchart LR
 
 ## 💻 C++ 实现与复杂度分析
 
+### 通用 C++ 模板实现
+
+归并排序只依赖比较运算符 `<=`，适用于任意可比较类型。合并过程需要临时数组，空间 O(n)：
+
+```cpp
+#include <utility>   // std::move
+#include <vector>
+
+template <typename T>
+void merge(std::vector<T>& arr, int left, int mid, int right) {
+    std::vector<T> leftArr(arr.begin() + left, arr.begin() + mid + 1);
+    std::vector<T> rightArr(arr.begin() + mid + 1, arr.begin() + right + 1);
+
+    int i = 0, j = 0, k = left;
+    while (i < static_cast<int>(leftArr.size()) &&
+           j < static_cast<int>(rightArr.size())) {
+        if (leftArr[i] <= rightArr[j])        // <= 保证稳定性
+            arr[k++] = std::move(leftArr[i++]);
+        else
+            arr[k++] = std::move(rightArr[j++]);
+    }
+    while (i < static_cast<int>(leftArr.size()))
+        arr[k++] = std::move(leftArr[i++]);
+    while (j < static_cast<int>(rightArr.size()))
+        arr[k++] = std::move(rightArr[j++]);
+}
+
+template <typename T>
+void mergeSortImpl(std::vector<T>& arr, int left, int right) {
+    if (left >= right) return;
+    int mid = left + (right - left) / 2;
+    mergeSortImpl(arr, left, mid);
+    mergeSortImpl(arr, mid + 1, right);
+    merge(arr, left, mid, right);
+}
+
+// 包装函数
+template <typename T>
+void mergeSort(std::vector<T>& arr) {
+    if (!arr.empty())
+        mergeSortImpl(arr, 0, static_cast<int>(arr.size()) - 1);
+}
+```
+
 ### 时间复杂度怎么算
 
 用**递归树分析法**：

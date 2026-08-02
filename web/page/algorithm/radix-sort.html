@@ -175,7 +175,13 @@ flowchart LR
 <h3>稳定性</h3>
 <p>基数排序是<strong>稳定的</strong>，前提是每轮的内层排序（分配-收集）是稳定的。</p>
 <p>在我们的实现中，同一位值相同的元素会按原始顺序进入桶，再按桶号顺序依次收集——整个过程保持了元素的相对顺序。</p>
-<p>程序验证：</p>
+<p><strong>程序验证</strong></p>
+<p>完整可编译源码位于 <code>src/cpp/algorithm/radix_sort.cpp</code>，编译命令 <code>make bin/radix_sort</code>。</p>
+<p>以下数据均来自程序实际运行输出，使用两组测试数据：</p>
+<ul>
+<li>演示数据：<code>[170, 45, 75, 90, 802, 24, 2, 66]</code>（共 3 位，3 轮）</li>
+<li>较大数据集：<code>[329, 457, 657, 839, 436, 720, 355]</code></li>
+</ul>
 <pre><code>原始: (170,a) (45,x) (75,y) (90,b) (802,c) (24,z) (2,d) (66,w)
 排序后: (2,d) (24,z) (45,x) (66,w) (75,y) (90,b) (170,a) (802,c)
 </code></pre>
@@ -183,12 +189,44 @@ flowchart LR
 <p>如果扩展测试加入相同 key 的元素，它们的 tag 顺序（即原始顺序）会保持不变——这正是稳定排序的含义。</p>
 <hr />
 <h2>💻 C++ 实现与复杂度分析</h2>
-<p><strong>程序验证</strong>：完整可编译源码位于 <code>src/cpp/algorithm/radix_sort.cpp</code>，编译命令 <code>make bin/radix_sort</code>。</p>
-<p>以下数据均来自程序实际运行输出，使用两组测试数据：</p>
-<ul>
-<li>演示数据：<code>[170, 45, 75, 90, 802, 24, 2, 66]</code>（共 3 位，3 轮）</li>
-<li>较大数据集：<code>[329, 457, 657, 839, 436, 720, 355]</code></li>
-</ul>
+<h3>通用 C++ 模板实现</h3>
+<p>基数排序依赖逐位提取，适用于非负整数类型（<code>int</code> / <code>long long</code> / <code>size_t</code> 等）。负数需额外处理符号位：</p>
+<pre><code class="language-cpp">#include &lt;algorithm&gt;  // std::max_element
+#include &lt;vector&gt;
+
+template &lt;typename T&gt;
+int getDigit(T num, int d) {
+    for (int i = 1; i &lt; d; ++i) num /= 10;
+    return static_cast&lt;int&gt;(num % 10);
+}
+
+template &lt;typename T&gt;
+int getMaxDigits(const std::vector&lt;T&gt;&amp; arr) {
+    T maxVal = *std::max_element(arr.begin(), arr.end());
+    int digits = 0;
+    while (maxVal &gt; 0) { maxVal /= 10; ++digits; }
+    return digits;
+}
+
+template &lt;typename T&gt;
+void radixSort(std::vector&lt;T&gt;&amp; arr) {
+    int n = static_cast&lt;int&gt;(arr.size());
+    if (n &lt;= 1) return;
+    int maxDigits = getMaxDigits(arr);
+
+    for (int d = 1; d &lt;= maxDigits; ++d) {
+        std::vector&lt;std::vector&lt;T&gt;&gt; buckets(10);
+        // 分配
+        for (int i = 0; i &lt; n; ++i)
+            buckets[getDigit(arr[i], d)].push_back(arr[i]);
+        // 收集
+        int idx = 0;
+        for (int b = 0; b &lt; 10; ++b)
+            for (const T&amp; val : buckets[b])
+                arr[idx++] = val;
+    }
+}
+</code></pre>
 <h3>时间复杂度怎么算</h3>
 <p>设 n = 元素个数，d = 最大位数，k = 基数（十进制 k=10）。</p>
 <p>每一轮的操作：</p>
