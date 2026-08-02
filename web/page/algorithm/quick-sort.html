@@ -111,16 +111,16 @@ flowchart TB
 <p>Lomuto 分区方案（选最右元素为 pivot）：</p>
 <div class="mermaid">
 flowchart LR
-    A([pivot = arr[high]&lt;br/&gt;i = low - 1]) --&gt; B{j 从 low 到 high-1}
+    A([&quot;pivot = arr[high]&lt;br/&gt;i = low - 1&quot;]) --&gt; B{&quot;j 从 low 到 high-1&quot;}
     B --&gt; C{&quot;arr[j] &lt;= pivot ?&quot;}
     C --&gt;|是| D[&quot;++i, 交换 arr[i] 与 arr[j]&quot;]
-    C --&gt;|否| E[不动]
-    D --&gt; F[++j]
+    C --&gt;|否| E[&quot;不动&quot;]
+    D --&gt; F[&quot;++j&quot;]
     E --&gt; F
     F --&gt; G{&quot;j &lt; high ?&quot;}
     G --&gt;|是| B
     G --&gt;|否| H[&quot;交换 arr[i+1] 与 arr[high]&quot;]
-    H --&gt; I([返回 i+1])
+    H --&gt; I([&quot;返回 i+1&quot;])
 </div>
 <h3>分区演示</h3>
 <p>用 <code>[10, 7, 8, 9, 1, 5]</code> 跑一遍 Lomuto 分区方案：</p>
