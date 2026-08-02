@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：选择排序——每轮挑个最小的放到前面</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：选择排序——每轮挑个最小的放到前面</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 10 分钟</p>
+<p>你有没有这样整理过书架？</p>
+<p>扫一眼所有书，找到最矮的那本放到最左边，</p>
+<p>再从剩下的里面找最矮的放第二位... 一趟一趟地，每轮只做一件事，在未排序的部分里选一个最小值。</p>
+<p>这个过程就是<strong>选择排序（Selection Sort）</strong> 。</p>
+<p>排序的过程中，每轮都从未排序区选一个最小元素，交换到已排序区的末尾。</p>
+<p>思路简单到不需要任何花哨技巧，但它的特性（不稳定、比较次数固定）让它在面试和理论分析中经常被拿来当对比基准。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p>把数组分成"已排序区"和"未排序区"。</p>
+<p>初始时已排序区为空。</p>
+<p>每轮在未排序区里找最小元素，直接交换到已排序区的末尾。</p>
+<p>重复 n-1 轮后全局有序。</p>
+<p>"每次选一个最小的放过去，不关心中间过程，只关心结果。" —— 这就是选择排序的全部逻辑。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+for i = 0 to n-2:
+    minIdx = i
+    for j = i+1 to n-1:
+        if arr[j] &lt; arr[minIdx]:
+            minIdx = j
+    if minIdx != i:
+        swap(arr[i], arr[minIdx])
+</code></pre>
+<p>核心就两层循环。</p>
+<p>外层控制"当前要填哪个位置"。</p>
+<p>内层扫描剩余部分找最小值。</p>
+<p>下面用流程图拆解。</p>
+<h3>工作原理流程图</h3>
+<p>先看整体骨架（对应伪代码的外层循环）：</p>
+<div class="mermaid">
+flowchart LR
+    A([开始]) --&gt; B[i = 0]
+    B --&gt; C{ i &lt; n-1 ? }
+    C --&gt;|否| Z([结束])
+    C --&gt;|是| D[在 i..n-1 中找最小值 minIdx]
+    D --&gt; E{&quot;arr[minIdx] != arr[i] ?&quot;}
+    E --&gt;|是| F[&quot;交换 arr[i] 与 arr[minIdx]&quot;]
+    E --&gt;|否| G[跳过，无需交换]
+    F --&gt; H[++i]
+    G --&gt; H
+    H --&gt; C
+</div>
+<p>再看内层"找最小值"的细节：</p>
+<div class="mermaid">
+flowchart LR
+    A([开始找最小]) --&gt; B[minIdx = i, j = i+1]
+    B --&gt; C{ j &lt; n ? }
+    C --&gt;|否| D([返回 minIdx])
+    C --&gt;|是| E{&quot;arr[j] &lt; arr[minIdx] ?&quot;}
+    E --&gt;|是| F[minIdx = j]
+    E --&gt;|否| G[不变]
+    F --&gt; H[++j]
+    G --&gt; H
+    H --&gt; C
+</div>
+<h3>逐趟演示</h3>
+<p>用 <code>[5, 3, 8, 4, 2]</code> 跑一遍，看每轮发生了什么：</p>
+<pre><code>初始数组: [5, 3, 8, 4, 2]
+
+第 1 趟 (选最小放位置 0): [2] [3,8,4,5]
+       在 [5,3,8,4,2] 中最小值是 2，与位置 0 的 5 交换
+
+第 2 趟 (选最小放位置 1): [2,3] [8,4,5]
+       在 [3,8,4,5] 中最小值是 3，已经在正确位置
+
+第 3 趟 (选最小放位置 2): [2,3,4] [8,5]
+       在 [8,4,5] 中最小值是 4，与位置 2 的 8 交换
+
+第 4 趟 (选最小放位置 3): [2,3,4,5] [8]
+       在 [8,5] 中最小值是 5，与位置 3 的 8 交换
+
+最终结果: [2, 3, 4, 5, 8]
+</code></pre>
+<p>注意观察：<strong>每轮只发生一次交换（或零次）</strong>，这是选择排序和冒泡排序最大的行为差异。冒泡可能一轮交换多次，选择每轮最多一次。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>教学入门</strong></td>
+<td>逻辑最直观，代码量最少</td>
+</tr>
+<tr>
+<td><strong>小规模数据（n &lt; 50）</strong></td>
+<td>常数因子小，简单场景可接受</td>
+</tr>
+<tr>
+<td><strong>写操作昂贵（如 EEPROM）</strong></td>
+<td>每轮最多 1 次交换，写入次数最少之一</td>
+</tr>
+<tr>
+<td><strong>数据量极大</strong></td>
+<td>❌ 不推荐，O(n²) 比较太慢</td>
+</tr>
+<tr>
+<td><strong>几乎有序</strong></td>
+<td>❌ 不推荐，比较次数固定，不如插入排序</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>时间 O(n²)</strong></td>
+<td>数据量大时太慢，n=10000 就要约 5000 万次比较</td>
+</tr>
+<tr>
+<td><strong>不稳定</strong></td>
+<td>相等元素的相对顺序会被改变（下面会演示）</td>
+</tr>
+<tr>
+<td><strong>比较次数固定</strong></td>
+<td>不管输入是否有序，都是 n(n-1)/2 次比较，无法提前退出</td>
+</tr>
+<tr>
+<td><strong>在链表上实现不如数组高效</strong></td>
+<td>每轮寻找最小值需从头遍历，无法利用缓存局部性，且指针操作较数组下标更繁琐；但并非"不能实现"</td>
+</tr>
+</tbody>
+</table>
+<h3>稳定性问题</h3>
+<p><strong>程序验证</strong></p>
+<p>以下数据展示不稳定性的根本原因。</p>
+<p>选择排序是不稳定排序。来看反例：</p>
+<pre><code>原始: [2a, 2b, 1]
+
+第 1 轮：在 [2a, 2b, 1] 中找最小 → 1（位置 2），与位置 0 的 2a 交换 → [1, 2b, 2a]
+
+两个 2 的相对顺序从 (2a, 2b) 变成了 (2b, 2a)，稳定性被破坏。
+</code></pre>
+<p>跨越相等元素的交换直接打乱了原始相对顺序，这是选择排序无法保证稳定性的根本原因。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>通用实现</h3>
+<pre><code class="language-cpp">template &lt;typename T&gt;
+void selectionSort(std::vector&lt;T&gt;&amp; arr) {
+    int n = arr.size();
+    for (int i = 0; i &lt; n - 1; ++i) {
+        int minIdx = i;
+        for (int j = i + 1; j &lt; n; ++j)
+            if (arr[j] &lt; arr[minIdx])
+                minIdx = j;
+        if (minIdx != i)
+            std::swap(arr[i], arr[minIdx]);
+    }
+}
+</code></pre>
+<p>支持任意可比较类型，原地排序，空间 O(1)。</p>
+<h3>时间复杂度怎么算</h3>
+<p><strong>基本操作是比较</strong>（<code>arr[j] &lt; arr[minIdx]</code>）。</p>
+<p>外层跑 n-1 轮。</p>
+<p>第 i 轮（i 从 0 开始）的内层比较次数 = (n-1) - (i+1) + 1 = n-i-1 次。</p>
+<p>总比较次数 = 第 0 轮 + 第 1 轮 + ... + 第 n-2 轮</p>
+<p>= (n-1) + (n-2) + ... + 1</p>
+<p>= <strong>等差数列求和</strong> = n(n-1)/2</p>
+<p>去系数留主项：<strong>O(n²)</strong></p>
+<p>关键点：这个次数是<strong>固定的</strong>，不管输入是否已经有序。</p>
+<p>程序也验证了这一点：</p>
+<table>
+<thead>
+<tr>
+<th>输入</th>
+<th>比较</th>
+<th>交换</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>已有序 <code>[1,2,3,4,5]</code></td>
+<td>10</td>
+<td>0</td>
+</tr>
+<tr>
+<td>完全逆序 <code>[5,4,3,2,1]</code></td>
+<td>10</td>
+<td>2</td>
+</tr>
+</tbody>
+</table>
+<p>n=5 时 n(n-1)/2 = 10，两种情况比较次数完全一样。区别只在交换次数。</p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>比较次数</th>
+<th>交换次数</th>
+<th>时间复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好</td>
+<td>n(n-1)/2</td>
+<td>0</td>
+<td><strong>O(n²)</strong></td>
+</tr>
+<tr>
+<td>最坏</td>
+<td>n(n-1)/2</td>
+<td>n-1</td>
+<td><strong>O(n²)</strong></td>
+</tr>
+<tr>
+<td>平均</td>
+<td>n(n-1)/2</td>
+<td>≈ n/2</td>
+<td><strong>O(n²)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>最坏交换次数 n-1 当且仅当每轮最小值都不在当前位置时才达到；已有序时交换次数为 0。</p>
+<p>三种情况时间复杂度全是 O(n²)，这是选择排序的一个显著特征。</p>
+<h3>空间复杂度怎么算</h3>
+<p>只用了 <code>i</code>、<code>j</code>、<code>minIdx</code> 和交换临时变量这几个标量，与数据规模 n 无关。</p>
+<p>所以<strong>空间复杂度 O(1)</strong>，原地排序。</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：每轮从未排序区选最小元素交换到已排序区末尾，重复 n-1 轮。</li>
+<li><strong>解决什么 / 用在哪</strong>：把无序变有序；适合教学、小规模数据、交换成本高的场景。</li>
+<li><strong>局限</strong>：O(n²) 太慢、不稳定、比较次数无法减少（即使已有序也要跑满）。</li>
+<li><strong>复杂度怎么算</strong>：基本操作是比较 → 内层循环次数构成等差数列 → 总计 n(n-1)/2 → O(n²)；空间只看标量变量 → O(1)。三种情况时间复杂度相同是它的一大特点。</li>
+<li><strong>进阶联想</strong>：把"线性扫描找最值"换成二叉堆加速，就是堆排序——同样的选最值思想，换套数据结构，复杂度从 O(n²) 降到 O(n log n)。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>
