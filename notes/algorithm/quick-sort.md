@@ -73,13 +73,13 @@ Lomuto 分区方案（选最右元素为 pivot）：
 flowchart LR
     A([pivot = arr[high]<br/>i = low - 1]) --> B{j 从 low 到 high-1}
     B --> C{arr[j] <= pivot ?}
-    C -->|是| D[++i, 交换 arr[i] 与 arr[j]]
+    C -->|是| D["++i, 交换 arr[i] 与 arr[j]"]
     C -->|否| E[不动]
     D --> F[++j]
     E --> F
     F --> G{j < high ?}
     G -->|是| B
-    G -->|否| H[交换 arr[i+1] 与 arr[high]]
+    G -->|否| H["交换 arr[i+1] 与 arr[high]"]
     H --> I([返回 i+1])
 ```
 

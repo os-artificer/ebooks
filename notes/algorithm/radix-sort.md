@@ -64,14 +64,14 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A([取当前位数字 digit]) --> B[放入 buckets[digit]]
+    A([取当前位数字 digit]) --> B["放入 buckets[digit]"]
     B --> C{还有元素?}
     C -->|是| A
-    C -->|否| D[output = []]
+    C -->|否| D["output = []"]
     D --> E[bucket = 0]
     E --> F{bucket < 10 ?}
     F -->|否| H([本轮完成])
-    F -->|是| G[output.extend(buckets[bucket])]
+    F -->|是| G["output.extend(buckets[bucket])"]
     G --> I[++bucket]
     I --> F
 ```

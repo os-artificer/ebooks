@@ -44,7 +44,7 @@ flowchart LR
     C -->|否| Z([结束])
     C -->|是| D[在 i..n-1 中找最小值 minIdx]
     D --> E{ arr[minIdx] != arr[i] ? }
-    E -->|是| F[交换 arr[i] 与 arr[minIdx]]
+    E -->|是| F["交换 arr[i] 与 arr[minIdx]"]
     E -->|否| G[跳过，无需交换]
     F --> H[++i]
     G --> H

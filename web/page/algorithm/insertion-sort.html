@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C++ 排序算法实践：插入排序——像整理扑克牌一样逐张归位</title>
+    <style>
+      body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;line-height:1.7;margin:24px;}
+      pre{background:#0b1020;color:#e6edf3;padding:12px;border-radius:10px;overflow:auto;}
+      code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,Liberation Mono,monospace;}
+      a{color:#2563eb;text-decoration:none;}
+      a:hover{text-decoration:underline;}
+      img{max-width:100%;height:auto;}
+      .mermaid{text-align:center;margin:1.4em 0;padding:14px 12px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:10px;overflow-x:auto;}
+      .mermaid svg{max-width:100%;height:auto;}
+      ul,ol{margin:0.5rem 0;padding-left:1.5rem;}
+      li{margin:0.25rem 0;}
+      blockquote ul,blockquote ol{margin:0.5rem 0;}
+      table{border-collapse:collapse;}
+      th,td{border:1px solid #d1d5db;padding:6px 10px;}
+      th{background:#f9fafb;}
+      article>blockquote:first-of-type{margin:0.5rem 0 1rem;padding:0;border-left:none;color:#4b5563;font-size:0.92em;}
+      article>blockquote:first-of-type p{margin:0.2em 0;line-height:1.5;}
+      .mermaid{display:flex;justify-content:center;margin:1rem 0;overflow-x:auto;}
+    </style>
+    <script type="module">
+      import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11.6.0/dist/mermaid.esm.min.mjs';
+      mermaid.initialize({ startOnLoad: true, securityLevel: 'loose', theme: 'default' });
+    </script>
+</head>
+<body>
+    <article>
+      <h1 style="margin-top:0">C++ 排序算法实践：插入排序——像整理扑克牌一样逐张归位</h1>
+      <p>作者：Artificer老王  |  更新时间：2026-08-01  |  阅读时长：约 11 分钟</p>
+<p>你打扑克牌的时候是怎么理牌的？</p>
+<p>摸一张，拿在手里，往已有的牌里插到一个合适的位置。</p>
+<p>再摸一张，再插进去…… 不需要扫全场，只需要跟手里已有的几张比一比就能找到位置。</p>
+<p>这就是<strong>插入排序（Insertion Sort）</strong> 的核心思想。</p>
+<p>把数组分成"已排序区"和"未排序区"，每次取未排序区的第一个元素，在已排序区里找到合适的位置插进去。</p>
+<p>它是唯一一个在"数据几乎有序"时能跑到 O(n) 的简单排序算法。</p>
+<hr />
+<h2>🧠 它是什么</h2>
+<h3>核心思想</h3>
+<p><strong>维护一个已排序的前缀，每次取下一个新元素，通过不断与前面的元素比较并右移，腾出空位后把自己插进去。</strong></p>
+<p>像整理扑克牌：手里的牌永远是有序的，新来的牌只需往后找自己的位置。 </p>
+<p>插入排序的本质就是维护一个动态增长的有序序列。</p>
+<h3>伪代码</h3>
+<pre><code class="language-cpp">// 仅为示意
+for i = 1 to n-1:
+    key = arr[i]
+    j = i - 1
+    while j &gt;= 0 and arr[j] &gt; key:
+        arr[j + 1] = arr[j]
+        j = j - 1
+    arr[j + 1] = key
+</code></pre>
+<p>注意 <code>while</code> 条件用的是 <code>&gt;</code>（严格大于），这是稳定性的来源。</p>
+<p>下面用流程图拆解这段伪代码。</p>
+<h3>工作原理流程图</h3>
+<p>整体骨架（对应伪代码的外层 for 循环）：</p>
+<div class="mermaid">
+flowchart LR
+    A([开始]) --&gt; B[i = 1]
+    B --&gt; C{&quot;i &lt; n ?&quot;}
+    C --&gt;|否| Z([结束])
+    C --&gt;|是| D[&quot;key = arr[i], j = i-1&quot;]
+    D --&gt; E{&quot;j &gt;= 0 and arr[j] &gt; key?&quot;}
+    E --&gt;|是| F[&quot;arr[j+1] = arr[j], --j&quot;]
+    F --&gt; E
+    E --&gt;|否| G[&quot;arr[j+1] = key&quot;]
+    G --&gt; H[&quot;++i&quot;]
+    H --&gt; C
+</div>
+<p>内层"寻找插入位置"的过程：</p>
+<div class="mermaid">
+flowchart TB
+    subgraph search_pos[&quot;寻找插入位置&quot;]
+        direction TB
+        A1([取出 key]) --&gt; B1[j 指向前一个元素]
+        B1 --&gt; C1{&quot;arr[j] &gt; key?&quot;}
+        C1 --&gt;|是| D1[&quot;大元素右移一位&lt;br/&gt;j 继续左移&quot;]
+        D1 --&gt; C1
+        C1 --&gt;|否/越界| E1[key 落位到 j+1]
+    end
+</div>
+<h3>逐趟演示</h3>
+<p>用 <code>[5, 3, 8, 4, 2]</code> 跑一遍，看每张"新牌"如何插入：</p>
+<pre><code>初始数组: [5, 3, 8, 4, 2]
+
+第 1 趟 (插入 3): 已排序 [3,5] | 未排序 [8,4,2]
+       取出 3，5 比 3 大所以右移，3 落位到位置 0
+
+第 2 趟 (插入 8): 已排序 [3,5,8] | 未排序 [4,2]
+       取出 8，8 已经比 5 大，直接落在位置 2，不用移动
+
+第 3 趟 (插入 4): 已排序 [3,4,5,8] | 未排序 [2]
+       取出 4，5 和 8 都比 4 大依次右移，4 落位到位置 1
+
+第 4 趟 (插入 2): 已排序 [2,3,4,5,8] | 未排序 []
+       取出 2，3/4/5/8 都比 2 大全部右移，2 落位到位置 0
+
+最终结果: [2, 3, 4, 5, 8]
+</code></pre>
+<p>注意第 2 趟：8 不需要任何移动就直接落位了。</p>
+<p>这就是插入排序的优势所在——<strong>如果新元素已经在正确位置附近，工作量很小</strong>。</p>
+<hr />
+<h2>🎯 能解决什么问题</h2>
+<h3>适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>为什么适合</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>小规模数据（n &lt; 50）</strong></td>
+<td>常数因子极小，实际运行往往比递归的快排还快</td>
+</tr>
+<tr>
+<td><strong>几乎有序的数据</strong></td>
+<td>最佳情况 O(n)，已有顺序越多越快</td>
+</tr>
+<tr>
+<td><strong>在线排序</strong></td>
+<td>数据流式到达，每来一个就能插入已有序的部分</td>
+</tr>
+<tr>
+<td><strong>作为其他算法的子过程</strong></td>
+<td>快排小区间优化、希尔排序的增量=1 阶段都用到它</td>
+</tr>
+</tbody>
+</table>
+<h3>局限性</h3>
+<table>
+<thead>
+<tr>
+<th>局限</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>平均/最坏 O(n²)</strong></td>
+<td>逆序时每个元素都要移到最前面，退化为平方级</td>
+</tr>
+<tr>
+<td><strong>大量数据时不适用</strong></td>
+<td>n 超过几千就应该考虑更高效的算法</td>
+</tr>
+</tbody>
+</table>
+<h3>与其他算法的对比</h3>
+<table>
+<thead>
+<tr>
+<th>特征</th>
+<th>冒泡排序</th>
+<th>选择排序</th>
+<th>插入排序</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好情况</td>
+<td>O(n)（带优化）</td>
+<td>O(n²)</td>
+<td><strong>O(n)</strong></td>
+</tr>
+<tr>
+<td>最坏情况</td>
+<td>O(n²)</td>
+<td>O(n²)</td>
+<td>O(n²)</td>
+</tr>
+<tr>
+<td>稳定</td>
+<td>稳定</td>
+<td>不稳定</td>
+<td><strong>稳定</strong></td>
+</tr>
+<tr>
+<td>每轮操作</td>
+<td>多次相邻交换</td>
+<td>最多 1 次交换</td>
+<td>多次移动</td>
+</tr>
+<tr>
+<td>对近有序敏感</td>
+<td>是（可提前退出）</td>
+<td>否</td>
+<td><strong>非常敏感</strong></td>
+</tr>
+</tbody>
+</table>
+<h3>稳定性证明</h3>
+<p>插入排序是稳定的。</p>
+<p>因为内层循环的条件是 <code>arr[j] &gt; key</code>（严格大于），遇到相等的元素就停止移动，不会越过相等元素。</p>
+<p>程序输出验证：</p>
+<pre><code>原始: (3,a) (2,x) (2,y) (1,b)
+排序后: (1,b) (2,x) (2,y) (3,a)
+</code></pre>
+<p>(2,x) 仍然在 (2,y) 前面，相对顺序保持不变。</p>
+<hr />
+<h2>💻 C++ 实现与复杂度分析</h2>
+<h3>时间复杂度怎么算</h3>
+<p><strong>基本操作是比较</strong>（<code>arr[j] &gt; key</code>）和<strong>移动</strong>（赋值操作）。</p>
+<p>按以下三种情况分析：</p>
+<p><strong>最好情况（已有序）：</strong></p>
+<p>每轮只需 1 次比较（key 直接比前一个大），内层 while 不进入。共 n-1 轮，总计 <strong>n-1 次比较</strong>。</p>
+<p>加上取 key 和落位的赋值，总工作量与 n 成正比 → <strong>O(n)</strong>。</p>
+<p>程序验证：已有序 <code>[1,2,3,4,5]</code> 只需 4 次比较、8 次移动。</p>
+<p><strong>最坏情况（完全逆序）：</strong></p>
+<p>第 i 轮（i 从 1 到 n-1）需要 i 次比较和 i+2 次移动（取 key + i 次右移 + 落位）。</p>
+<p>总比较 = 1 + 2 + ... + (n-1) = n(n-1)/2 → <strong>O(n²)</strong></p>
+<p>总移动 = 3 + 4 + ... + (n+1) = n(n-1)/2 + 2(n-1) → <strong>O(n²)</strong></p>
+<p>程序验证：逆序 <code>[5,4,3,2,1]</code> 需要 10 次比较、18 次移动。</p>
+<p><strong>平均情况（随机排列）：</strong></p>
+<p>期望比较次数约为 n²/4，期望移动次数约为 n²/4 → <strong>O(n²)</strong></p>
+<table>
+<thead>
+<tr>
+<th>情况</th>
+<th>比较次数</th>
+<th>移动次数</th>
+<th>时间复杂度</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>最好（已有序）</td>
+<td>n-1</td>
+<td>2(n-1)</td>
+<td><strong>O(n)</strong></td>
+</tr>
+<tr>
+<td>最坏（逆序）</td>
+<td>n(n-1)/2</td>
+<td>~n²/2</td>
+<td><strong>O(n²)</strong></td>
+</tr>
+<tr>
+<td>平均（随机）</td>
+<td>≈ n²/4*</td>
+<td>≈ n²/4*</td>
+<td><strong>O(n²)</strong></td>
+</tr>
+</tbody>
+</table>
+<p>注：平均值为近似值，精确期望取决于输入分布，记住 O(n²) 量级即可。</p>
+<h3>空间复杂度怎么算</h3>
+<p>只用 <code>key</code>、<code>j</code> 几个标量，额外空间与 n 无关 → <strong>O(1)</strong>，原地排序。</p>
+<p>📌 小结算法：<strong>时间 O(n²)（最好 O(n)）、空间 O(1)、稳定、原地、对近有序极度友好</strong>。</p>
+<hr />
+<h2>📌 总结</h2>
+<ul>
+<li><strong>是什么</strong>：维护已排序前缀，每次取下一个元素通过比较+右移找到合适位置插入。</li>
+<li><strong>怎么演示</strong>：用两张分层流程图看清骨架+内层插入过程；用 <code>[5,3,8,4,2]</code> 的逐趟输出看到"大元素右移腾位、key 落位"的核心动作。</li>
+<li><strong>解决什么 / 用在哪</strong>：把无序变有序；特别适合小数据和几乎有序的场景；是快排小区间优化的标配子算法。</li>
+<li><strong>局限</strong>：逆序时退化到 O(n²)；大规模数据需要更高效的算法。</li>
+<li><strong>复杂度怎么算</strong>：最好 O(n)（已有序，每轮只比 1 次）；最坏/平均 O(n²)（等差数列求和）；空间 O(1)。严格大于保证稳定性。</li>
+<li><strong>系列定位</strong>：三大简单排序中最实用的一个。下一篇希尔排序就是它的升级版——通过分组插入突破 O(n²) 的天花板。</li>
+</ul>
+<hr />
+<p><strong>完整可运行示例代码</strong>：本文所有代码均已上传至 GitHub 仓库（os-artificer/ebooks）位于 <code>src/cpp/algorithm/</code> 目录。</p>
+<p>文中的代码片段为<strong>说明原理的伪代码</strong>，正式可编译版本请查看 <code>src/cpp/algorithm/</code> 下对应的 <code>.cpp</code> 文件。</p>
+<p>本文首发于公众号 <strong>Artificer老王的学习笔记</strong>，转载请注明出处。</p>
+    </article>
+</body>
+</html>

@@ -52,7 +52,7 @@ flowchart TB
     B -->|否| D[mid = (l+r)/2]
     D --> E[mergeSort 左半 arr, l, mid]
     D --> F[mergeSort 右半 arr, mid+1, r]
-    E --> G[merge 合并 arr[l..mid] 和 arr[mid+1..r]]
+    E --> G["merge 合并 arr[l..mid] 和 arr[mid+1..r]"]
     F --> G
 ```
 
@@ -65,8 +65,8 @@ flowchart LR
     C -->|否| H[剩余元素直接追加]
     H --> I([合并完成])
     C -->|是| D{左[i] <= 右[j] ?}
-    D -->|是| E[取左[i], ++i]
-    D -->|否| F[取右[j], ++j]
+    D -->|是| E["取左[i], ++i"]
+    D -->|否| F["取右[j], ++j"]
     E --> G[写入输出]
     F --> G
     G --> C

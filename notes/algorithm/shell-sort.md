@@ -63,13 +63,13 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A([i 从 gap 到 n-1]) --> B[temp = arr[i], j = i]
+    A([i 从 gap 到 n-1]) --> B["temp = arr[i], j = i"]
     B --> C{j >= gap ?}
-    C -->|否| D[arr[j] = temp]
+    C -->|否| D["arr[j] = temp"]
     D --> E[++i]
     E --> A
     C -->|是| F{arr[j-gap] > temp ?}
-    F -->|是| G[arr[j] = arr[j-gap]<br/>j -= gap]
+    F -->|是| G["arr[j] = arr[j-gap]<br/>j -= gap"]
     G --> C
     F -->|否| D
 ```
