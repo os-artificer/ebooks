@@ -20,7 +20,7 @@
 
 第三步是奶茶。煮红茶、热牛奶、搓珍珠。前两样还算顺利，珍珠是重灾区：木薯粉揉成团，搓成小圆子，下锅煮了俩小时，捞出来的时候，得到了一锅焦糖浆糊。糊在锅底的那一层，后来用钢丝球刷了三天。
 
-![老王自制翻车现场](../images/design-mode/visitor-drinks-01.png)
+![老王自制翻车现场](../images/design-mode/visitor-drinks-01.jpg)
 
 ## 第二幕：真正的噩梦是维护
 
@@ -52,7 +52,7 @@
 
 老王一拍大腿，明白了：这就是访问者模式。东西（元素）保持不变，手艺（操作）装在一个个独立的师傅（访问者）身上，想加新手艺就新招一位师傅，谁也不用改行。
 
-![店里三工位各显神通](../images/design-mode/visitor-drinks-02.png)
+![店里三工位各显神通](../images/design-mode/visitor-drinks-02.jpg)
 
 ## 第四幕：两跳接力，一看就会
 
@@ -66,7 +66,7 @@
 
 这两跳，就是**双重分派**。
 
-![双重分派：两跳接力](../images/design-mode/visitor-drinks-03.png)
+![双重分派：两跳接力](../images/design-mode/visitor-drinks-03.jpg)
 
 用伪代码画一下，就这么点东西（仅为示意）：
 
