@@ -85,29 +85,9 @@
           "excerpt": "作者：Artificer老王 | 更新时间：2026-07-26 | 阅读时长：约 13 分钟"
         },
         {
-          "href": "./page/design-mode/bridge-pattern.html",
-          "text": "C++ 设计模式实践：桥接模式，抽象与实现分家，两个维度各长各的",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-04 | 阅读时长：约 13 分钟"
-        },
-        {
-          "href": "./page/design-mode/decorator-pattern.html",
-          "text": "C++ 设计模式实践：装饰器模式，不改原类，功能想叠几层叠几层",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-04 | 阅读时长：约 13 分钟"
-        },
-        {
-          "href": "./page/design-mode/iterator-pattern.html",
-          "text": "C++ 设计模式实践：迭代器模式，换种容器，遍历代码一行不改",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-04 | 阅读时长：约 13 分钟"
-        },
-        {
-          "href": "./page/design-mode/memento-pattern.html",
-          "text": "C++ 设计模式实践：备忘录模式，给对象一颗\"后悔药\"",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-04 | 阅读时长：约 13 分钟"
-        },
-        {
-          "href": "./page/design-mode/observer-pattern.html",
-          "text": "C++ 设计模式实践：观察者模式，状态一变，订阅它的人自动收到通知",
-          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-04 | 阅读时长：约 13 分钟"
+          "href": "./page/design-mode/bridge-pattern-principle.html",
+          "text": "C++ 桥接模式：定义、结构与实现",
+          "excerpt": "作者：Artificer老王 | 更新时间：2026-08-06 | 阅读时长：约 10 分钟"
         },
         {
           "href": "./page/design-mode/state-pattern.html",
